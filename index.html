@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MOB — Prototype</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #0e0e10;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #e8e6e3;
+    overscroll-behavior: none;
+  }
+  body { display: flex; justify-content: center; }
+  #app {
+    width: 100%; max-width: 480px;
+    height: 100vh; height: 100dvh;
+    background: #17181a;
+    display: flex; flex-direction: column;
+    border-left: 1px solid #26272a; border-right: 1px solid #26272a;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ---- Top bar: header + HUD, always visible ---- */
+  #topbar { flex-shrink: 0; z-index: 5; }
+  header {
+    padding: 10px 14px; background: #1c1d20; border-bottom: 1px solid #2a2b2e;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header .avatar {
+    width: 34px; height: 34px; border-radius: 50%; background: #3a2f26;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+  }
+  header .title { font-weight: 600; font-size: 14px; }
+  header .sub { font-size: 10.5px; color: #8a8a8f; }
+  #hud {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: #26272a; border-bottom: 1px solid #26272a; cursor: pointer;
+  }
+  #hud .cell { background: #1c1d20; padding: 6px 4px; text-align: center; }
+  #hud .cell .v { font-size: 12.5px; font-weight: 600; }
+  #hud .cell .l { font-size: 8.5px; color: #8a8a8f; text-transform: uppercase; letter-spacing: 0.04em; }
+  #hud .energy .v { color: #f2c14e; }
+  #hud .money .v { color: #6fcf97; }
+  #hud .respect .v { color: #d97757; }
+  #hud .heat .v { color: #eb5757; }
+  #xpbar { height: 3px; background: #2a2b2e; }
+  #xpbar .fill { height: 100%; background: #6fcf97; transition: width .3s; }
+
+  /* ---- Main content: single screen, replaced not appended ---- */
+  #content { flex: 1; overflow-y: auto; padding: 12px 12px 14px; -webkit-overflow-scrolling: touch; }
+  #content::-webkit-scrollbar { width: 4px; }
+  #content::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  /* ---- Bottom nav ---- */
+  #bottomnav {
+    flex-shrink: 0; display: grid; grid-template-columns: repeat(5, 1fr);
+    background: #1c1d20; border-top: 1px solid #2a2b2e;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  #bottomnav button {
+    background: none; border: none; color: #75767c; padding: 7px 2px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 9.5px; cursor: pointer; font-family: inherit;
+  }
+  #bottomnav button .ic { font-size: 18px; }
+  #bottomnav button.active { color: #6fcf97; }
+
+  /* ---- Generic building blocks ---- */
+  .card {
+    background: #1e1f22; border: 1px solid #2a2b2e; border-radius: 12px;
+    padding: 12px; margin-bottom: 10px;
+  }
+  .card h3 { margin: 0 0 4px; font-size: 14px; }
+  .card p { margin: 0; font-size: 12.5px; color: #a9a9ae; line-height: 1.5; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pill-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .pill-row::-webkit-scrollbar { display: none; }
+  .pill {
+    flex-shrink: 0; background: #202124; border: 1px solid #333437; color: #c8c8cc;
+    border-radius: 999px; padding: 6px 13px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
+  .pill.active { background: #2b4a3f; border-color: #3a6b52; color: #8fe0b8; }
+
+  .action-btn {
+    width: 100%; text-align: left; background: #202124; border: 1px solid #2f3033;
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+    color: #e8e6e3; font-family: inherit; font-size: 12.5px;
+  }
+  .action-btn:active { background: #26282c; }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .action-btn .abtitle { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .action-btn .absub { color: #9a9a9f; font-size: 11.5px; }
+  .action-btn.primary { border-color: #3a6b52; }
+  .action-btn.primary .abtitle { color: #8fe0b8; }
+
+  .btn { background: #2b4a3f; color: #8fe0b8; border: none; border-radius: 10px; padding: 11px; font-size: 13px; font-family: inherit; cursor: pointer; width: 100%; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.secondary { background: #202124; color: #e8e6e3; border: 1px solid #333437; }
+  .btn.small { padding: 8px; font-size: 12px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bigcard {
+    background: #1e1f22; border: 1px solid #2a2b2e; border-radius: 12px; padding: 14px 10px;
+    text-align: center; cursor: pointer;
+  }
+  .bigcard .ic { font-size: 22px; margin-bottom: 4px; }
+  .bigcard .lb { font-size: 12px; font-weight: 600; }
+
+  .barwrap { background: #2a2b2e; border-radius: 4px; height: 6px; overflow: hidden; margin-top: 3px; }
+  .bar { height: 100%; background: #6fcf97; }
+
+  .tiny { font-size: 10.5px; color: #83838a; }
+  .statline { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid #242528; }
+  .statline:last-child { border-bottom: none; }
+  .statline b { color: #e8e6e3; }
+
+  .badge { display: inline-block; background: #26272a; border-radius: 6px; padding: 1px 7px; font-size: 10.5px; margin-left: 4px; }
+  .badge.rare { color: #6fcf97; }
+  .badge.epic { color: #b39ddb; }
+  .badge.legendary { color: #f2c14e; }
+  .badge.common { color: #9a9a9f; }
+
+  .empty-hint { text-align: center; color: #83838a; font-size: 12.5px; padding: 24px 10px; }
+
+  /* ---- Toasts ---- */
+  #toasts {
+    position: absolute; left: 0; right: 0; bottom: 62px; z-index: 30;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; padding: 0 12px;
+  }
+  .toast {
+    max-width: 100%; background: #232427; border: 1px solid #333437; border-left: 3px solid #6fcf97;
+    border-radius: 10px; padding: 9px 13px; font-size: 12.5px; line-height: 1.45;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.4); animation: toastin .18s ease-out;
+    white-space: pre-wrap;
+  }
+  .toast.warn { border-left-color: #eb5757; }
+  .toast.levelup { border-left-color: #f2c14e; background: #2a2418; }
+  .toast.chatter { border-left-color: #b39ddb; background: #221f2a; font-style: italic; color: #cfc3e8; }
+  @keyframes toastin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .toast.fadeout { animation: toastout .25s ease-in forwards; }
+  @keyframes toastout { to { opacity: 0; transform: translateY(-6px); } }
+
+  /* ---- Onboarding overlay ---- */
+  #onboarding {
+    position: absolute; inset: 0; background: #121214; z-index: 50;
+    display: flex; flex-direction: column; justify-content: center; padding: 22px;
+    overflow-y: auto;
+  }
+  #onboarding h1 { font-size: 22px; margin: 0 0 6px; }
+  #onboarding .lead { color: #a9a9ae; font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
+  #onboarding input {
+    width: 100%; background: #1e1f22; border: 1px solid #333437; border-radius: 10px;
+    padding: 12px 14px; color: #e8e6e3; font-size: 15px; margin-bottom: 12px; font-family: inherit;
+  }
+  #onboarding input:focus { outline: none; border-color: #6fcf97; }
+  .faction-card {
+    background: #1e1f22; border: 1px solid #2a2b2e; border-radius: 12px; padding: 12px 14px;
+    margin-bottom: 8px; cursor: pointer;
+  }
+  .faction-card:active { background: #232427; }
+  .faction-card .fname { font-weight: 600; font-size: 14px; }
+  .faction-card .fdesc { font-size: 12px; color: #9a9a9f; margin-top: 2px; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <div id="topbar">
+    <header>
+      <div class="avatar">🕵️</div>
+      <div>
+        <div class="title">MOB</div>
+        <div class="sub" id="headerSub">Underworld</div>
+      </div>
+    </header>
+    <div id="hud" style="display:none;" onclick="openHeatModal()">
+      <div class="cell energy"><div class="v" id="hudEnergy">-</div><div class="l">Energy</div></div>
+      <div class="cell money"><div class="v" id="hudMoney">-</div><div class="l">Money</div></div>
+      <div class="cell respect"><div class="v" id="hudRespect">-</div><div class="l">Respect</div></div>
+      <div class="cell heat"><div class="v" id="hudHeat">-</div><div class="l">Heat</div></div>
+    </div>
+    <div id="xpbar" style="display:none;"><div class="fill" id="xpfill" style="width:0%"></div></div>
+  </div>
+
+  <main id="content"></main>
+
+  <nav id="bottomnav" style="display:none;">
+    <button data-tab="home" onclick="setTab('home')"><span class="ic">🏠</span>Home</button>
+    <button data-tab="jobs" onclick="setTab('jobs')"><span class="ic">🎯</span>Jobs</button>
+    <button data-tab="crime" onclick="setTab('crime')"><span class="ic">⚔️</span>Crime</button>
+    <button data-tab="cards" onclick="setTab('cards')"><span class="ic">🃏</span>Cards</button>
+    <button data-tab="profile" onclick="setTab('profile')"><span class="ic">👤</span>Profile</button>
+  </nav>
+
+  <div id="toasts"></div>
+
+  <div id="onboarding">
+    <div id="onboardingInner"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   MULTIPLAYER CONFIG — fill these in before this file will work.
+   ========================================================================= */
+
+// From your Supabase project: Project Settings -> API.
+// The anon key is meant to be public/client-side — Supabase's real security is
+// Row Level Security on the database, not hiding this key. NEVER put the
+// service_role key here; that one stays in the backend's .env only.
+const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+// Your backend's URL. While testing locally this is localhost; update it once deployed
+// (e.g. to Railway/Render) to that service's public URL.
+const API_BASE_URL = 'http://localhost:3000';
+
+const CONFIG_IS_SET = SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY_HERE';
+
+let supabaseClient = null;
+let authSession = null; // { access_token, user: {...} } once logged in
+
+/* --- Backend API client: every call attaches the current Supabase auth token.
+   This is the ONLY way the game reads/writes real state now — there is no local
+   computation of rewards anymore for anything wired to the backend. --- */
+async function apiCall(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authSession && authSession.access_token) {
+    headers['Authorization'] = 'Bearer ' + authSession.access_token;
+  }
+  let res;
+  try {
+    res = await fetch(API_BASE_URL + path, {
+      method, headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw { status: 0, message: 'Could not reach the server. Is the backend running at ' + API_BASE_URL + '?' };
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* empty body */ }
+  if (!res.ok) {
+    throw { status: res.status, message: (data && data.error) || ('Request failed (' + res.status + ')') };
+  }
+  return data;
+}
+
+/* =========================================================================
+   GAME DATA & LOGIC
+   (unchanged from the tested chat-prototype — only the rendering layer below
+   this section is new)
+   ========================================================================= */
+
+const FACTIONS = {
+  famiglia: { name: "La Famiglia", flag: "🇮🇹", desc: "+10% Money from all jobs", moneyMult: 1.10 },
+  bratva:   { name: "Volch'ya Staya", flag: "🇷🇺", desc: "+10 Defense", defBonus: 10 },
+  yakuza:   { name: "Kuroi Tatsu", flag: "🇯🇵", desc: "+10 Attack", atkBonus: 10 },
+  cartel:   { name: "Los Sangres Rojas", flag: "🇲🇽", desc: "+10% Respect from all jobs", respectMult: 1.10 },
+  triad:    { name: "Crimson Phoenix", flag: "🇨🇳", desc: "+20 Maximum Energy", maxEnergyBonus: 20 }
+};
+
+const RANKS = [
+  { name: "Street Punk", minLevel: 1 },
+  { name: "Associate", minLevel: 3 },
+  { name: "Soldier", minLevel: 6 },
+  { name: "Capo", minLevel: 10 },
+  { name: "Underboss", minLevel: 15 },
+  { name: "Boss", minLevel: 21 },
+  { name: "Don", minLevel: 28 },
+  { name: "Godfather", minLevel: 36 }
+];
+
+const QUESTS = [
+  { id: "store", name: "Rob Convenience Store", icon: "🏪", energy: 10, xp: 14, money: [30,60], respect: 3, heat: 2 },
+  { id: "smuggle", name: "Smuggle Weapons", icon: "📦", energy: 18, xp: 22, money: [70,120], respect: 4, heat: 5 },
+  { id: "extort", name: "Extort Business", icon: "💼", energy: 15, xp: 18, money: [50,90], respect: 5, heat: 3 },
+  { id: "drugs", name: "Drug Delivery", icon: "💊", energy: 20, xp: 26, money: [90,150], respect: 3, heat: 6 },
+  { id: "launder", name: "Money Laundering", icon: "🧺", energy: 25, xp: 30, money: [120,200], respect: 6, heat: 4 }
+];
+
+const RIVAL_TITLES = ["Boss","Capo","Don","Underboss","Kingpin"];
+const RIVAL_CREWS = ["The Iron Serpents","Red Lantern Crew","The Broken Blades","Nightfall Syndicate","The Ashwood Family","Steel Talon Gang","The Hollow Crows","Copper Fang Outfit"];
+
+function randomRival(pp) {
+  const variance = 0.7 + Math.random() * 0.6;
+  const power = Math.max(15, Math.round(pp * variance));
+  const attackShare = 0.4 + Math.random() * 0.2;
+  const attack = Math.round(power * attackShare);
+  const defense = Math.round(power * (1 - attackShare));
+  const crewSize = Math.floor(Math.random() * 4);
+  const title = RIVAL_TITLES[Math.floor(Math.random()*RIVAL_TITLES.length)];
+  const crew = RIVAL_CREWS[Math.floor(Math.random()*RIVAL_CREWS.length)];
+  return {
+    id: 'v' + Math.random().toString(36).slice(2,9),
+    name: title + ' of ' + crew,
+    attack, defense, crewSize,
+    moneyStake: Math.round(power * (4 + Math.random()*4)),
+    respectStake: Math.max(2, Math.round(power * 0.15))
+  };
+}
+
+function playerPower() {
+  return state.attack + gangAttack(state.gang) + state.defense + gangDefense(state.gang);
+}
+
+// --- Territory & Named Rivals ---
+// Persistent bosses who actually remember you and hold ground, unlike the throwaway Gang Wars rivals above.
+const NAMED_RIVALS_DATA = [
+  { id: 'nr_sal',    name: "\"Big Sal\" Moretti", basePower: 30 },
+  { id: 'nr_yuki',   name: "Yuki Tanaka",          basePower: 42 },
+  { id: 'nr_dmitri', name: "Dmitri Volkov",        basePower: 56 },
+  { id: 'nr_carlos', name: "Carlos Reyes",         basePower: 70 },
+  { id: 'nr_broker', name: '"The Broker"',         basePower: 88 }
+];
+
+const DISTRICTS_DATA = [
+  { id: 'd_docks',     name: 'The Docks',        icon: '⚓', business: 'Smuggling Pier',    baseIncome: 7,  ownerId: 'nr_sal' },
+  { id: 'd_littleit',  name: 'Little Italy',      icon: '🍝', business: 'Restaurant Front',  baseIncome: 6,  ownerId: 'nr_sal' },
+  { id: 'd_chinatown', name: 'Chinatown',         icon: '🏮', business: 'Underground Casino',baseIncome: 12, ownerId: 'nr_yuki' },
+  { id: 'd_warehouse', name: 'Warehouse District',icon: '📦', business: 'Chop Shop',         baseIncome: 9,  ownerId: 'nr_dmitri' },
+  { id: 'd_redlight',  name: 'Red Light District',icon: '🌃', business: 'Nightclub',         baseIncome: 11, ownerId: 'nr_carlos' },
+  { id: 'd_financial', name: 'Financial District',icon: '🏦', business: 'Loan Shark Office', baseIncome: 14, ownerId: 'nr_broker' },
+  { id: 'd_uptown',    name: 'Uptown',            icon: '🎰', business: 'Backroom Poker',    baseIncome: 8,  ownerId: null },
+  { id: 'd_eastside',  name: 'Eastside',          icon: '🛢️', business: 'Fencing Operation', baseIncome: 6,  ownerId: null }
+];
+
+const NEUTRAL_CLAIM_COST = 250;
+const TERRITORY_ATTACK_ENERGY_COST = 25;
+const INCOME_CAP_HOURS = 8;
+const UPGRADE_COSTS = [0, 400, 900]; // cost to reach tier 1->2, 2->3 (tier 0 = base, index = current tier)
+const TIER_MULT = [1, 1.5, 2.2];
+
+function initDistricts() {
+  return DISTRICTS_DATA.map(d => ({
+    id: d.id, ownerId: d.ownerId, tier: 0, lastCollected: Date.now()
+  }));
+}
+function districtTemplate(id) { return DISTRICTS_DATA.find(d => d.id === id); }
+function rivalTemplate(id) { return NAMED_RIVALS_DATA.find(r => r.id === id); }
+function districtsHeldBy(ownerId) { return state.districts.filter(d => d.ownerId === ownerId); }
+function playerDistricts() { return districtsHeldBy('player'); }
+
+function rivalEffectivePower(rivalId) {
+  const rival = rivalTemplate(rivalId);
+  const heldCount = districtsHeldBy(rivalId).length;
+  const grudge = (state.rivalGrudge[rivalId] || 0);
+  const grudgeMult = 1 + Math.min(0.4, grudge * 0.08);
+  return Math.round((rival.basePower + heldCount * 10) * grudgeMult);
+}
+
+function pendingIncome(d) {
+  const tpl = districtTemplate(d.id);
+  const elapsedHours = Math.min(INCOME_CAP_HOURS, (Date.now() - d.lastCollected) / 3600000);
+  return Math.floor(tpl.baseIncome * TIER_MULT[d.tier] * elapsedHours);
+}
+function totalPendingIncome() {
+  return playerDistricts().reduce((sum, d) => sum + pendingIncome(d), 0);
+}
+
+function computeEpithet() {
+  const count = playerDistricts().length;
+  if (count === 0) return null;
+  const tierNames = ['', 'Rising Player', 'Turf Boss', 'Turf Boss', 'Kingpin', 'Kingpin', 'Kingpin', 'Emperor of the Underworld', 'Emperor of the Underworld'];
+  const base = tierNames[Math.min(count, tierNames.length - 1)];
+  const scores = {
+    Violent: state.pvpWins * 3 + state.hitsCompleted * 2,
+    Feared: state.hitsCompleted * 3 + state.heat,
+    Cunning: state.tournamentWins * 3 + state.cards.length,
+    Wealthy: Math.floor(state.money / 100)
+  };
+  const dominant = Object.entries(scores).sort((a,b) => b[1]-a[1])[0][0];
+  return `The ${dominant} ${base}`;
+}
+
+function chatter(message) {
+  toast(message, 'chatter');
+}
+function rankChatterLine(rank) {
+  const lines = {
+    'Associate': `You're not just some punk off the street anymore. People are starting to notice.`,
+    'Soldier': `The crew respects you now. That doesn't happen by accident.`,
+    'Capo': `Capo. Other bosses are starting to ask around about you.`,
+    'Underboss': `Underboss. You're two steps from running this whole city.`,
+    'Boss': `Boss. Say it slow — you earned that title.`,
+    'Don': `Don. There are people who've been in this life thirty years who never got that name.`,
+    'Godfather': `Godfather. There's nobody above you now. The city is yours.`
+  };
+  return lines[rank] || `You've been promoted to ${rank}.`;
+}
+
+const HIT_TARGET_NAMES = ["'Two-Tone' Costa","Ivan Sorokin","'Needles' Park","Ramon Castillo","'Silent' Wu","Alexei Volkova","'Preacher' Diallo","Mateo Reyes","'Cold Eyes' Han","Grigor Popov"];
+
+const HIT_TYPES = {
+  anonymous: { label: "Anonymous Hit", moneyMult: 1.0, respectMult: 1.0, heat: 10, blurb: "No name attached. Just a name on a folder and a payday." },
+  faction:   { label: "Faction Hit", moneyMult: 1.4, respectMult: 0.8, heat: 16, blurb: "Ordered by a rival organization. Pays well, draws attention." },
+  revenge:   { label: "Revenge Hit", moneyMult: 0.6, respectMult: 1.8, heat: 8, blurb: "Personal. Somebody wants this settled for pride, not money." }
+};
+
+function randomContract() {
+  const typeKeys = Object.keys(HIT_TYPES);
+  const typeKey = typeKeys[Math.floor(Math.random() * typeKeys.length)];
+  const type = HIT_TYPES[typeKey];
+  const targetPower = Math.max(10, Math.round(playerPower() * (0.6 + Math.random() * 0.7)));
+  const baseMoney = 60 + targetPower * 3;
+  const baseRespect = 4 + Math.round(targetPower * 0.1);
+  return {
+    id: 'h' + Math.random().toString(36).slice(2,9),
+    typeKey,
+    name: HIT_TARGET_NAMES[Math.floor(Math.random() * HIT_TARGET_NAMES.length)],
+    targetDefense: Math.round(targetPower * 0.5),
+    targetLuck: 5 + Math.floor(Math.random() * 20),
+    money: Math.round(baseMoney * type.moneyMult),
+    respect: Math.round(baseRespect * type.respectMult)
+  };
+}
+
+const RECRUIT_FIRST = ["Vinny","Sal","Tommy","Nicky","Frankie","Rocco","Enzo","Marco","Dmitri","Yuri","Kenji","Hiro","Carlos","Miguel","Chen","Wei","Bruno","Leo"];
+const RECRUIT_NICK = ["The Blade","Two Fingers","The Ghost","Iron Fist","The Snake","Lucky","The Wolf","Razor","The Shadow","Bones","The Fox","Hammer"];
+const RECRUIT_LAST = ["Rossi","Marchetti","Volkov","Petrov","Tanaka","Sato","Reyes","Cruz","Wong","Li","Moretti","DeLuca"];
+
+function randomRecruit() {
+  const attack = 5 + Math.floor(Math.random() * 20);
+  const defense = 5 + Math.floor(Math.random() * 20);
+  const loyalty = 40 + Math.floor(Math.random() * 50);
+  const cost = Math.round((attack + defense) * 3 + loyalty * 1.2);
+  const useNick = Math.random() < 0.4;
+  const name = useNick
+    ? RECRUIT_FIRST[Math.floor(Math.random()*RECRUIT_FIRST.length)] + " '" + RECRUIT_NICK[Math.floor(Math.random()*RECRUIT_NICK.length)] + "'"
+    : RECRUIT_FIRST[Math.floor(Math.random()*RECRUIT_FIRST.length)] + " " + RECRUIT_LAST[Math.floor(Math.random()*RECRUIT_LAST.length)];
+  return { id: 'r' + Math.random().toString(36).slice(2,9), name, attack, defense, loyalty, cost };
+}
+
+const SPECIAL_QUESTS = [
+  { id: "tg", name: "Connect Telegram", boost: 2 },
+  { id: "dc", name: "Connect Discord", boost: 2 },
+  { id: "x", name: "Connect X", boost: 2 },
+  { id: "wallet", name: "Connect Web3 Wallet", boost: 3 },
+  { id: "social", name: "Follow Social Media", boost: 2 },
+  { id: "ref", name: "Referral System", boost: 3 }
+];
+
+const BLACK_MARKET_COOLDOWN_MS = 12 * 60 * 1000;
+const BLACK_MARKET_ENERGY_COST = 35;
+
+const NUMBER_CARDS = [2,3,4,5,6,7,8,9,10].map(n => ({
+  id: 'card' + n, name: n + '', tier: 'number',
+  cost: 40 + (n - 2) * 12,
+  desc: 'Underground access. No bonuses — just the door in.'
+}));
+
+const PREMIUM_TITLES = {
+  jack:  { id: 'jack',  name: 'Jack',  tier: 'premium', cost: 900,  icon: '♣️', desc: '+6% money from every job', bonusType: 'money', value: 0.06 },
+  queen: { id: 'queen', name: 'Queen', tier: 'premium', cost: 900,  icon: '♦️', desc: '+6% respect from every job', bonusType: 'respect', value: 0.06 },
+  king:  { id: 'king',  name: 'King',  tier: 'premium', cost: 1400, icon: '♠️', desc: '-15% heat from every crime', bonusType: 'heat', value: 0.15 },
+  ace:   { id: 'ace',   name: 'Ace',   tier: 'premium', cost: 1600, icon: '♥️', desc: '+8% XP from every job', bonusType: 'xp', value: 0.08 }
+};
+
+function ownsAnyTitle() { return state.titles.length > 0; }
+function ownedPremiumTitles() { return state.titles.map(id => PREMIUM_TITLES[id]).filter(Boolean); }
+function titleBonusMult(bonusType) {
+  const owned = ownedPremiumTitles().find(t => t.bonusType === bonusType);
+  return owned ? (bonusType === 'heat' ? (1 - owned.value) : (1 + owned.value)) : 1;
+}
+function applyHeatGain(amount) {
+  return Math.max(0, Math.round(amount * titleBonusMult('heat')));
+}
+
+const SECRET_DEAL_TEMPLATES = [
+  { id: "atk", label: "Weapon Dealer", desc: "+3 Attack, permanent", cost: 180, apply: (s) => { s.attack += 3; } },
+  { id: "def", label: "Armor Plating", desc: "+3 Defense, permanent", cost: 180, apply: (s) => { s.defense += 3; } },
+  { id: "luck", label: "Lucky Charm", desc: "+3 Luck, permanent", cost: 200, apply: (s) => { s.luck += 3; } },
+  { id: "energy", label: "Stamina Contact", desc: "+10 Max Energy, permanent", cost: 260, apply: (s) => { s.maxEnergy += 10; s.energy += 10; } },
+  { id: "respect", label: "Reputation Broker", desc: "+15 Respect, instantly", cost: 150, apply: (s) => { s.respect += 15; } }
+];
+
+function randomEliteTarget() {
+  const power = Math.max(30, Math.round(playerPower() * (0.45 + Math.random() * 0.3)));
+  return {
+    name: HIT_TARGET_NAMES[Math.floor(Math.random() * HIT_TARGET_NAMES.length)] + " (Underboss)",
+    defense: Math.round(power * 0.42),
+    luck: 8 + Math.floor(Math.random() * 12),
+    money: 300 + power * 6,
+    respect: 20 + Math.round(power * 0.2)
+  };
+}
+
+const CARD_RARITIES = [
+  { id: 'common',    label: 'Common',    weight: 60, powerMin: 5,  powerMax: 15 },
+  { id: 'rare',      label: 'Rare',      weight: 25, powerMin: 15, powerMax: 30 },
+  { id: 'epic',      label: 'Epic',      weight: 12, powerMin: 30, powerMax: 55 },
+  { id: 'legendary', label: 'Legendary', weight: 3,  powerMin: 55, powerMax: 90 }
+];
+const CARD_NAMES = ["The Enforcer","The Consigliere","The Wheelman","The Fixer","The Hacker","The Smuggler",
+  "The Cleaner","The Bookkeeper","The Muscle","The Informant","The Negotiator","The Ghost Driver",
+  "The Torch","The Locksmith","The Sniper","The Don's Right Hand"];
+const CARD_PACK_COST = 60;
+const TOURNAMENT_ENERGY_COST = 15;
+
+function rollRarity() {
+  const total = CARD_RARITIES.reduce((s, r) => s + r.weight, 0);
+  let roll = Math.random() * total;
+  for (const r of CARD_RARITIES) {
+    if (roll < r.weight) return r;
+    roll -= r.weight;
+  }
+  return CARD_RARITIES[0];
+}
+function openPack() {
+  const rarity = rollRarity();
+  const power = rarity.powerMin + Math.floor(Math.random() * (rarity.powerMax - rarity.powerMin + 1));
+  const name = CARD_NAMES[Math.floor(Math.random() * CARD_NAMES.length)];
+  return { id: 'c' + Math.random().toString(36).slice(2,9), name, rarityId: rarity.id, power };
+}
+function deckPower() {
+  return [...state.cards].sort((a,b) => b.power - a.power).slice(0, 5).reduce((s,c) => s + c.power, 0);
+}
+function rarityInfo(id) { return CARD_RARITIES.find(r => r.id === id); }
+
+/* --- Account storage: replaced by the real backend + Supabase Auth.
+   The old per-browser local save system is gone — your character now lives in the
+   database, not in this file. See apiCall() / authSession above. --- */
+
+let state = null;
+let energyTimer = null;
+
+function xpForLevel(lvl) { return lvl * 100; }
+function rankFor(level) {
+  let r = RANKS[0];
+  for (const rk of RANKS) if (level >= rk.minLevel) r = rk;
+  return r;
+}
+
+function newPlayer(name, factionKey) {
+  const f = FACTIONS[factionKey];
+  return {
+    name, factionKey,
+    level: 1, xp: 0,
+    money: 100, respect: 0,
+    energy: 100 + (f.maxEnergyBonus || 0),
+    maxEnergy: 100 + (f.maxEnergyBonus || 0),
+    heat: 0,
+    xpBoost: 0,
+    attack: 10 + (f.atkBonus || 0),
+    defense: 10 + (f.defBonus || 0),
+    luck: 10,
+    questsDone: 0,
+    specialDone: [],
+    gang: [],
+    recruitPool: [randomRecruit(), randomRecruit(), randomRecruit()],
+    rivals: [],
+    pvpWins: 0,
+    pvpLosses: 0,
+    hitlistBoard: [],
+    hitsCompleted: 0,
+    hitsFailed: 0,
+    hitsSurvived: 0,
+    sniperLastUsedAt: 0,
+    secretDealsPool: [],
+    titles: [],
+    cards: [],
+    tournamentWins: 0,
+    tournamentLosses: 0,
+    tournamentPoints: 0,
+    log: [],
+    createdAt: Date.now(),
+    accountId: 'acc_' + Math.random().toString(36).slice(2, 10),
+    districts: initDistricts(),
+    rivalGrudge: {},
+    territoriesCaptured: 0,
+    rivalsEliminated: 0,
+    everWanted: false
+  };
+}
+
+function gangMoneyBonus(gang) { return 1 + Math.min(0.30, gang.length * 0.02); }
+function gangAttack(gang) { return gang.reduce((s,m) => s + m.attack, 0); }
+function gangDefense(gang) { return gang.reduce((s,m) => s + m.defense, 0); }
+
+function heatLabel(h) {
+  if (h < 20) return 'Low';
+  if (h < 45) return 'Med';
+  if (h < 70) return 'High';
+  if (h < 90) return 'Wanted';
+  return 'MOST WANTED';
+}
+function heatTier(h) {
+  if (h < 20) return 'low';
+  if (h < 45) return 'medium';
+  if (h < 70) return 'high';
+  if (h < 90) return 'wanted';
+  return 'mostwanted';
+}
+
+function rollHeatEvent() {
+  const tier = heatTier(state.heat);
+  if (tier === 'low') return null;
+  if (tier === 'medium') {
+    if (Math.random() < 0.18) {
+      const fine = Math.min(state.money, 20 + Math.floor(Math.random() * 30));
+      state.money -= fine;
+      return { cls: 'warn', text: `🚓 Random Inspection. Local police stopped you for a look.\n-$${fine}` };
+    }
+    return null;
+  }
+  if (tier === 'high') {
+    const roll = Math.random();
+    if (roll < 0.12) {
+      const fine = Math.min(state.money, Math.round(state.money * 0.25) + 40);
+      const energyLoss = Math.min(state.energy, 25);
+      state.money -= fine;
+      state.energy -= energyLoss;
+      state.heat = Math.max(0, state.heat - 15);
+      return { cls: 'warn', text: `🚨 Police Raid! They hit one of your spots.\n-$${fine}  -${energyLoss}⚡  🌡 Heat -15` };
+    }
+    if (roll < 0.30) {
+      const fine = Math.min(state.money, 30 + Math.floor(Math.random() * 40));
+      state.money -= fine;
+      return { cls: 'warn', text: `🚓 Random Inspection. They searched you at a checkpoint.\n-$${fine}` };
+    }
+    return null;
+  }
+  return null;
+}
+
+// Returns true if the action should be blocked (heat too high). Renders a blocked-state card into the target container id.
+function heatBlocked() {
+  const tier = heatTier(state.heat);
+  return tier === 'wanted' || tier === 'mostwanted';
+}
+function heatBlockedCard() {
+  return `<div class="card" style="border-color:#4a2a2a;">
+    <h3>🚨 You're ${esc(heatLabel(state.heat))}</h3>
+    <p>Every cop in the city has your face — quests are locked at this heat level. Heat management (lay low / bribe / lawyer) isn't wired to the multiplayer backend yet, so for now heat only goes down once that system is ported. Known limitation, not a bug.</p>
+  </div>`;
+}
+
+/* =========================================================================
+   RENDERING LAYER (new — replaces the chat/bubble UI)
+   ========================================================================= */
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function nl(s) { return esc(s).replace(/\n/g, '<br>'); }
+
+let currentTab = 'home';
+let crimeSubTab = 'territory';
+let cardsSubTab = 'battle';
+let jobsSubTab = 'quests';
+
+function pushLog(text) {
+  if (!state) return;
+  state.log.unshift({ text, t: Date.now() });
+  state.log = state.log.slice(0, 8);
+}
+
+function toast(message, cls) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (cls ? ' ' + cls : '');
+  el.innerHTML = nl(message);
+  $('toasts').appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fadeout');
+    setTimeout(() => el.remove(), 260);
+  }, 2600);
+  pushLog(message.replace(/\n/g, ' — '));
+}
+
+function updateHUD() {
+  if (!state) return;
+  if (!state.everWanted && heatTier(state.heat) === 'wanted') {
+    state.everWanted = true;
+    chatter(`The papers picked up your name today. You're Wanted now — that's not nothing.`);
+  }
+  $('hud').style.display = 'grid';
+  $('xpbar').style.display = 'block';
+  $('hudEnergy').textContent = state.energy + '/' + state.maxEnergy;
+  $('hudMoney').textContent = '$' + state.money.toLocaleString();
+  $('hudRespect').textContent = state.respect;
+  $('hudHeat').textContent = heatLabel(state.heat);
+  const epithet = computeEpithet();
+  $('headerSub').textContent = state.name + (epithet ? ' "' + epithet.replace('The ', '') + '"' : '') + ' • ' + rankFor(state.level).name + ' • Lv.' + state.level;
+  const need = xpForLevel(state.level);
+  $('xpfill').style.width = Math.min(100, Math.round((state.xp/need)*100)) + '%';
+}
+
+function render(html) { $('content').innerHTML = html; $('content').scrollTop = 0; }
+
+function setTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('#bottomnav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'home') renderHome();
+  else if (tab === 'jobs') renderJobs();
+  else if (tab === 'crime') renderCrime();
+  else if (tab === 'cards') renderCards();
+  else if (tab === 'profile') renderProfile();
+}
+function refreshCurrentTab() { setTab(currentTab); }
+
+/* ---------------- HOME ---------------- */
+function renderHome() {
+  const rank = rankFor(state.level);
+  const need = xpForLevel(state.level);
+  const epithet = computeEpithet();
+  const pending = totalPendingIncome();
+  const logHtml = state.log.length
+    ? state.log.map(l => `<div class="statline"><span>${nl(l.text)}</span></div>`).join('')
+    : `<div class="tiny" style="padding:6px 0;">No activity yet — go do a job.</div>`;
+
+  render(`
+    <div class="card">
+      <div class="row">
+        <div>
+          <h3>${esc(state.name)}</h3>
+          ${epithet ? `<div class="tiny" style="color:#cfc3e8;font-style:italic;">"${esc(epithet)}"</div>` : ''}
+          <div class="tiny">${esc(rank.name)} • Level ${state.level}</div>
+        </div>
+        <div style="font-size:24px;">${esc(FACTIONS[state.factionKey].flag)}</div>
+      </div>
+      <div class="barwrap"><div class="bar" style="width:${Math.min(100, Math.round((state.xp/need)*100))}%"></div></div>
+      <div class="tiny" style="margin-top:3px;">${state.xp}/${need} XP${state.xpBoost ? ' · +' + state.xpBoost + '% boost' : ''}</div>
+    </div>
+
+    ${pending > 0 ? `<div class="card" style="border-color:#3a6b52;cursor:pointer;" onclick="setTab('crime');crimeSub('territory')">
+      <div class="row"><h3 style="color:#8fe0b8;">💰 $${pending} ready to collect</h3><span class="tiny">Territory →</span></div>
+    </div>` : ''}
+
+    <div class="grid2" style="margin-bottom:10px;">
+      <div class="bigcard" onclick="setTab('jobs')"><div class="ic">🎯</div><div class="lb">Do a Job</div></div>
+      <div class="bigcard" onclick="setTab('crime');crimeSub('territory')"><div class="ic">🗺️</div><div class="lb">Territory</div></div>
+      <div class="bigcard" onclick="setTab('crime');crimeSub('pvp')"><div class="ic">⚔️</div><div class="lb">Gang Wars</div></div>
+      <div class="bigcard" onclick="setTab('cards')"><div class="ic">🃏</div><div class="lb">Card Battle</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Recent Activity</h3>
+      ${logHtml}
+    </div>
+  `);
+}
+
+/* ---------------- JOBS (Quests + Special) ---------------- */
+function renderJobs() {
+  render(`
+    <div class="pill-row">
+      <div class="pill ${jobsSubTab==='quests'?'active':''}" onclick="jobsSub('quests')">🎯 Quests</div>
+      <div class="pill ${jobsSubTab==='special'?'active':''}" onclick="jobsSub('special')">⭐ Special</div>
+    </div>
+    <div id="jobsBody"></div>
+  `);
+  renderJobsBody();
+}
+function jobsSub(tab) { jobsSubTab = tab; renderJobs(); }
+
+function renderJobsBody() {
+  const el = $('jobsBody');
+  if (!el) return;
+  if (jobsSubTab === 'quests') {
+    if (heatBlocked()) { el.innerHTML = heatBlockedCard(); return; }
+    el.innerHTML = QUESTS.map(q => `
+      <button class="action-btn" ${state.energy < q.energy ? 'disabled' : ''} onclick="doQuest('${q.id}')">
+        <div class="abtitle">${q.icon} ${esc(q.name)}</div>
+        <div class="absub">${q.energy}⚡ · $${q.money[0]}-${q.money[1]} · +${q.xp} XP · +${q.respect} Respect · 🌡+${q.heat}</div>
+      </button>
+    `).join('');
+  } else {
+    el.innerHTML = notConnectedCard('Special Quests');
+  }
+}
+
+function notConnectedCard(systemName) {
+  return `<div class="card" style="border-color:#3a3a4a;">
+    <h3>🔒 ${esc(systemName)} isn't connected yet</h3>
+    <p>This system still only exists in the single-player prototype. It'll show up here once it's ported to the multiplayer backend.</p>
+  </div>`;
+}
+
+async function doQuest(id) {
+  const q = QUESTS.find(x => x.id === id);
+  if (!q || state.energy < q.energy) { toast("Not enough energy for that job.", 'warn'); return; }
+
+  try {
+    const data = await apiCall('POST', '/players/me/quests/' + id);
+    const p = data.player;
+    state.energy = p.energy; state.money = p.money; state.respect = p.respect;
+    state.heat = p.heat; state.level = p.level; state.xp = p.xp; state.questsDone = p.quests_done;
+
+    toast(`${q.icon} ${data.reward.questName}: +$${data.reward.money}  +${data.reward.xp} XP  +${data.reward.respect} Respect`, 'reward');
+    (data.levelUps || []).forEach(lu => {
+      toast(`🎉 LEVEL UP! Level ${lu.level} — promoted to ${lu.rank}.`, 'levelup');
+    });
+  } catch (e) {
+    toast(e.message || 'Could not complete that job.', 'warn');
+  }
+  updateHUD();
+  renderJobsBody();
+}
+
+function doSpecial(id) {
+  const sq = SPECIAL_QUESTS.find(x => x.id === id);
+  if (!sq || state.specialDone.includes(id)) return;
+  state.specialDone.push(id);
+  state.xpBoost = Math.min(20, state.xpBoost + sq.boost);
+  toast(`${sq.name} done. XP boost now +${state.xpBoost}%.`, 'reward');
+  updateHUD();
+  renderJobsBody();
+}
+
+function gainXP(amount) {
+  state.xp += amount;
+  let need = xpForLevel(state.level);
+  while (state.xp >= need) {
+    state.xp -= need;
+    state.level += 1;
+    const oldRank = rankFor(state.level - 1).name;
+    const newRank = rankFor(state.level).name;
+    if (newRank !== oldRank) {
+      toast(`🎉 LEVEL UP! Level ${state.level} — promoted to ${newRank}.`, 'levelup');
+      chatter(rankChatterLine(newRank));
+    }
+    else toast(`🎉 LEVEL UP! Level ${state.level}.`, 'levelup');
+    need = xpForLevel(state.level);
+  }
+}
+
+/* ---------------- CRIME (Gang Wars / Hitlist / Underground / Crew / Heat) ---------------- */
+function renderCrime() {
+  render(`
+    <div class="pill-row">
+      <div class="pill ${crimeSubTab==='territory'?'active':''}" onclick="crimeSub('territory')">🗺️ Territory</div>
+      <div class="pill ${crimeSubTab==='pvp'?'active':''}" onclick="crimeSub('pvp')">⚔️ Gang Wars</div>
+      <div class="pill ${crimeSubTab==='hitlist'?'active':''}" onclick="crimeSub('hitlist')">🔫 Hitlist</div>
+      <div class="pill ${crimeSubTab==='underground'?'active':''}" onclick="crimeSub('underground')">🕳️ Underground</div>
+      <div class="pill ${crimeSubTab==='crew'?'active':''}" onclick="crimeSub('crew')">👥 My Crew</div>
+      <div class="pill ${crimeSubTab==='heat'?'active':''}" onclick="crimeSub('heat')">🚔 Heat</div>
+    </div>
+    <div id="crimeBody"></div>
+  `);
+  renderCrimeBody();
+}
+function crimeSub(tab) { crimeSubTab = tab; renderCrime(); }
+
+function renderCrimeBody() {
+  const el = $('crimeBody');
+  if (!el) return;
+  if (crimeSubTab === 'territory') { renderTerritoryBody(el); return; }
+  const labels = { pvp: 'Gang Wars', hitlist: 'Hitlist', underground: 'Underground', crew: 'My Crew', heat: 'Heat management' };
+  el.innerHTML = notConnectedCard(labels[crimeSubTab] || 'This');
+}
+
+// -- Territory (real backend, real players) --
+let districtsCache = null;
+async function renderTerritoryBody(el) {
+  el.innerHTML = `<div class="tiny">Loading the map…</div>`;
+  try {
+    const data = await apiCall('GET', '/districts');
+    districtsCache = data.districts;
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:#eb5757;">Could not load the map: ${esc(e.message || 'unknown error')}</p></div>`;
+    return;
+  }
+
+  const mine = districtsCache.filter(d => d.owner_type === 'player' && d.owner_ref === state.serverId);
+  const totalIncome = mine.reduce((s, d) => s + Math.round(d.base_income * TIER_MULT[d.tier]), 0);
+  const totalPending = mine.reduce((s, d) => s + (d.pendingIncome || 0), 0);
+
+  const summary = `<div class="card">
+      <h3>Your Empire</h3>
+      <div class="statline"><span>Territories held</span><b>${mine.length} / ${districtsCache.length}</b></div>
+      <div class="statline"><span>Combined income/hr</span><b>$${totalIncome}</b></div>
+      ${totalPending > 0 ? `<div class="statline"><span>Waiting to collect</span><b style="color:#6fcf97;">$${totalPending}</b></div>` : ''}
+      <p class="tiny" style="margin-top:6px;">This map is shared — every player is contesting the same 8 districts, live.</p>
+    </div>`;
+
+  const cards = districtsCache.map(d => {
+    const isMine = d.owner_type === 'player' && d.owner_ref === state.serverId;
+    if (isMine) {
+      const ready = d.pendingIncome || 0;
+      const upgradeCost = d.tier < 2 ? UPGRADE_COSTS[d.tier + 1] : null;
+      return `<div class="card">
+        <div class="row"><h3>${esc(d.name)}</h3><span class="badge rare">Yours</span></div>
+        <p>${esc(d.business)} · Tier ${d.tier + 1}/3 · $${Math.round(d.base_income * TIER_MULT[d.tier])}/hr</p>
+        <div class="btn-row">
+          <button class="btn small" ${ready === 0 ? 'disabled' : ''} onclick="collectIncome('${d.id}')">💰 Collect $${ready}</button>
+          ${upgradeCost ? `<button class="btn secondary small" ${state.money < upgradeCost ? 'disabled' : ''} onclick="upgradeBusiness('${d.id}')">⬆️ Upgrade $${upgradeCost}</button>` : `<button class="btn secondary small" disabled>Max Tier</button>`}
+        </div>
+      </div>`;
+    }
+    if (d.owner_type === 'neutral') {
+      return `<div class="card">
+        <div class="row"><h3>${esc(d.name)}</h3><span class="badge common">Unclaimed</span></div>
+        <p>${esc(d.business)} · $${d.base_income}/hr once claimed</p>
+        <button class="btn" ${state.money < NEUTRAL_CLAIM_COST ? 'disabled' : ''} onclick="claimNeutral('${d.id}')">🏳️ Move In — $${NEUTRAL_CLAIM_COST}</button>
+      </div>`;
+    }
+    const isRealPlayer = d.owner_type === 'player';
+    return `<div class="card">
+      <div class="row"><h3>${esc(d.name)}</h3><span class="badge epic">${isRealPlayer ? '👤 ' : ''}${esc(d.ownerName || 'Unknown')}</span></div>
+      <p>${esc(d.business)} · Held by ${esc(d.ownerName || 'Unknown')}${isRealPlayer ? ' — a real player' : ''}</p>
+      <button class="btn" ${state.energy < TERRITORY_ATTACK_ENERGY_COST ? 'disabled' : ''} onclick="attackDistrict('${d.id}')">⚔️ Move on their turf — ${TERRITORY_ATTACK_ENERGY_COST}⚡</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = summary + cards;
+}
+
+async function claimNeutral(id) {
+  try {
+    const data = await apiCall('POST', '/districts/' + id + '/claim');
+    state.money = data.money;
+    state.territoriesCaptured = (state.territoriesCaptured || 0) + 1;
+    toast(`🏳️ Territory claimed. Your crew moves in.`, 'reward');
+    if (state.territoriesCaptured === 1) chatter(`Word gets around fast: you've got your first piece of the city.`);
+  } catch (e) {
+    toast(e.message || "Can't claim that right now.", 'warn');
+  }
+  updateHUD();
+  renderCrimeBody();
+}
+
+async function attackDistrict(id) {
+  if (state.energy < TERRITORY_ATTACK_ENERGY_COST) { toast("Not enough energy for that move.", 'warn'); return; }
+  try {
+    const data = await apiCall('POST', '/districts/' + id + '/attack');
+    state.energy = data.energy;
+    if (data.heat !== undefined) state.heat = data.heat;
+    if (data.won) {
+      state.territoriesCaptured = (state.territoriesCaptured || 0) + 1;
+      toast(`🏆 You took that district. It's yours now.`, 'reward');
+    } else {
+      toast(data.error && data.error.includes('first') ? data.error : `They held their ground. They'll be watching for you now.`, 'warn');
+    }
+  } catch (e) {
+    toast(e.message || 'Could not make that move.', 'warn');
+  }
+  updateHUD();
+  renderCrimeBody();
+}
+
+async function collectIncome(id) {
+  try {
+    const data = await apiCall('POST', '/districts/' + id + '/collect');
+    state.money = data.money;
+    if (data.collected > 0) toast(`💰 Collected $${data.collected}.`, 'reward');
+  } catch (e) {
+    toast(e.message || "Couldn't collect right now.", 'warn');
+  }
+  updateHUD();
+  renderCrimeBody();
+}
+
+async function upgradeBusiness(id) {
+  try {
+    const data = await apiCall('POST', '/districts/' + id + '/upgrade');
+    state.money = data.money;
+    toast(`⬆️ Business upgraded.`, 'reward');
+  } catch (e) {
+    toast(e.message || "Couldn't upgrade right now.", 'warn');
+  }
+  updateHUD();
+  renderCrimeBody();
+}
+
+// -- Gang Wars --
+const PVP_ENERGY_COST = 20;
+function renderPvPBody(el) {
+  if (heatBlocked()) { el.innerHTML = heatBlockedCard(); return; }
+  if (state.rivals.length === 0) state.rivals = [randomRival(playerPower()), randomRival(playerPower()), randomRival(playerPower())];
+  el.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Winning takes their cash and respect — and sometimes their people. Losing costs you.</p>` +
+    state.rivals.map(r => `
+      <button class="action-btn" ${state.energy < PVP_ENERGY_COST ? 'disabled' : ''} onclick="attackRival('${r.id}')">
+        <div class="abtitle">${esc(r.name)}</div>
+        <div class="absub">⚔️${r.attack} 🛡${r.defense} 👥${r.crewSize} · ${PVP_ENERGY_COST}⚡</div>
+      </button>
+    `).join('') +
+    `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshRivals()">🔄 Scout new rivals</button>`;
+}
+function refreshRivals() {
+  const p = playerPower();
+  state.rivals = [randomRival(p), randomRival(p), randomRival(p)];
+  renderCrimeBody();
+}
+function attackRival(id) {
+  const r = state.rivals.find(x => x.id === id);
+  if (!r || state.energy < PVP_ENERGY_COST) { toast("Not enough energy to move on them.", 'warn'); return; }
+  state.energy -= PVP_ENERGY_COST;
+
+  const myPower = state.attack + gangAttack(state.gang) + Math.round(Math.random() * 15);
+  const theirPower = r.attack + Math.round(Math.random() * 15);
+  const myDefRoll = state.defense + gangDefense(state.gang) + Math.round(Math.random() * 10);
+  const theirDefRoll = r.defense + Math.round(Math.random() * 10);
+  const won = myPower + myDefRoll > theirPower + theirDefRoll;
+
+  state.heat = Math.min(100, state.heat + applyHeatGain(won ? 8 : 5));
+  state.rivals = state.rivals.filter(x => x.id !== r.id);
+  if (state.rivals.length === 0) state.rivals = [randomRival(playerPower()), randomRival(playerPower()), randomRival(playerPower())];
+
+  if (won) {
+    state.pvpWins += 1;
+    state.money += r.moneyStake;
+    state.respect += r.respectStake;
+    let msg = `🏆 Beat ${r.name}: +$${r.moneyStake}  +${r.respectStake} Respect`;
+    if (r.crewSize > 0 && Math.random() < 0.35) {
+      const joined = randomRecruit();
+      state.gang.push(joined);
+      msg += `\n🤝 ${joined.name} switched sides and joined you!`;
+    }
+    toast(msg, 'reward');
+  } else {
+    state.pvpLosses += 1;
+    const lost = Math.min(state.money, Math.round(r.moneyStake * 0.5));
+    state.money -= lost;
+    toast(`💥 Lost to ${r.name}: -$${lost}`, 'warn');
+  }
+  updateHUD();
+  const event = rollHeatEvent();
+  if (event) setTimeout(() => toast(event.text, event.cls), 500);
+  renderCrimeBody();
+}
+
+// -- Hitlist --
+const HIT_ENERGY_COST = 22;
+function renderHitlistBody(el) {
+  if (heatBlocked()) { el.innerHTML = heatBlockedCard(); return; }
+  const incomingChance = Math.min(0.35, state.respect / 500);
+  if (Math.random() < incomingChance) { resolveIncomingHit(); }
+  if (state.hitlistBoard.length === 0) state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
+  el.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Contracts on real names, posted by people who want a problem to disappear.</p>` +
+    state.hitlistBoard.map(c => {
+      const type = HIT_TYPES[c.typeKey];
+      return `<button class="action-btn" ${state.energy < HIT_ENERGY_COST ? 'disabled' : ''} onclick="attemptHit('${c.id}')">
+        <div class="abtitle">${esc(type.label)}: ${esc(c.name)}</div>
+        <div class="absub">$${c.money} · +${c.respect} Respect · ${HIT_ENERGY_COST}⚡</div>
+      </button>`;
+    }).join('') +
+    `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshContracts()">🔄 Check new contracts</button>`;
+}
+function refreshContracts() {
+  state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
+  renderCrimeBody();
+}
+function attemptHit(id) {
+  const c = state.hitlistBoard.find(x => x.id === id);
+  if (!c || state.energy < HIT_ENERGY_COST) { toast("Not enough energy for that contract.", 'warn'); return; }
+  const type = HIT_TYPES[c.typeKey];
+  state.energy -= HIT_ENERGY_COST;
+
+  const myRoll = state.attack + gangAttack(state.gang) + state.luck + Math.round(Math.random() * 20);
+  const targetRoll = c.targetDefense + c.targetLuck + Math.round(Math.random() * 20);
+  const success = myRoll > targetRoll;
+
+  state.hitlistBoard = state.hitlistBoard.filter(x => x.id !== c.id);
+  if (state.hitlistBoard.length === 0) state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
+
+  if (success) {
+    state.hitsCompleted += 1;
+    state.money += c.money;
+    state.respect += c.respect;
+    state.heat = Math.min(100, state.heat + applyHeatGain(type.heat));
+    toast(`☠️ Contract complete: ${c.name}. +$${c.money}  +${c.respect} Respect`, 'reward');
+  } else {
+    state.hitsFailed += 1;
+    const lost = Math.min(state.money, 25 + Math.floor(Math.random() * 35));
+    state.money -= lost;
+    state.heat = Math.min(100, state.heat + applyHeatGain(Math.round(type.heat / 2)));
+    toast(`${c.name} got away clean. -$${lost}`, 'warn');
+  }
+  updateHUD();
+  renderCrimeBody();
+}
+function resolveIncomingHit() {
+  const attackerPower = 15 + Math.round(Math.random() * 40);
+  const myDefense = state.defense + gangDefense(state.gang) + state.luck + Math.round(Math.random() * 15);
+  const survived = myDefense >= attackerPower;
+  if (survived) {
+    state.hitsSurvived += 1;
+    state.respect += 3;
+    toast("🎯 Someone put a hit on you — your people shut it down. +3 Respect.", 'reward');
+  } else {
+    const lost = Math.min(state.money, 40 + Math.floor(Math.random() * 60));
+    state.money -= lost;
+    toast(`🎯 Someone put a hit on you and got close. -$${lost}`, 'warn');
+  }
+  updateHUD();
+}
+
+// -- Underground (Black Market + Secret Deals) --
+let undergroundSubTab = 'blackmarket';
+let blackMarketTarget = null;
+function renderUndergroundBody(el) {
+  if (!ownsAnyTitle()) {
+    el.innerHTML = `<div class="card">
+      <h3>The Underground isn't for just anyone</h3>
+      <p>You need to hold at least one NFT Title to get in — any Number Card works, you don't need a face card.</p>
+      <button class="btn" style="margin-top:10px;" onclick="setTab('cards');cardsSub('titles')">🎴 Go to Titles</button>
+    </div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="pill-row">
+      <div class="pill ${undergroundSubTab==='blackmarket'?'active':''}" onclick="undergroundSub('blackmarket')">🎯 Black Market</div>
+      <div class="pill ${undergroundSubTab==='deals'?'active':''}" onclick="undergroundSub('deals')">🤝 Secret Deals</div>
+    </div>
+    <div id="undergroundInner"></div>
+  `;
+  renderUndergroundInner();
+}
+function undergroundSub(tab) { undergroundSubTab = tab; renderCrimeBody(); }
+function renderUndergroundInner() {
+  const inner = $('undergroundInner');
+  if (!inner) return;
+  if (undergroundSubTab === 'blackmarket') return renderBlackMarket(inner);
+  return renderSecretDeals(inner);
+}
+
+function renderBlackMarket(inner) {
+  const elapsed = Date.now() - state.sniperLastUsedAt;
+  if (state.sniperLastUsedAt && elapsed < BLACK_MARKET_COOLDOWN_MS) {
+    const remainingSec = Math.ceil((BLACK_MARKET_COOLDOWN_MS - elapsed) / 1000);
+    inner.innerHTML = `<div class="card"><h3>🔫 Gun For Hire</h3>
+      <p>Your contact's gone quiet — one job at a time. Back in ${remainingSec}s.</p>
+      <div class="tiny">Stands in for the real game's 30-day cooldown.</div></div>`;
+    return;
+  }
+  if (heatBlocked()) { inner.innerHTML = heatBlockedCard(); return; }
+  if (!blackMarketTarget) blackMarketTarget = randomEliteTarget();
+  const t = blackMarketTarget;
+  inner.innerHTML = `<div class="card">
+      <h3>🔫 Gun For Hire</h3>
+      <p>One shot, one very well-paying contract — and a much bigger risk than street hits.</p>
+      <div class="statline"><span>Target</span><b>${esc(t.name)}</b></div>
+      <div class="statline"><span>Payout</span><b>$${t.money} · +${t.respect} Respect</b></div>
+    </div>
+    <button class="btn" ${state.energy < BLACK_MARKET_ENERGY_COST?'disabled':''} onclick="attemptSniper()">Take the contract — ${BLACK_MARKET_ENERGY_COST}⚡</button>`;
+}
+function attemptSniper() {
+  const target = blackMarketTarget;
+  if (!target || state.energy < BLACK_MARKET_ENERGY_COST) { toast("Not enough energy for that job.", 'warn'); return; }
+  state.energy -= BLACK_MARKET_ENERGY_COST;
+  state.sniperLastUsedAt = Date.now();
+
+  const myRoll = state.attack + gangAttack(state.gang) + Math.round(state.luck * 1.5) + Math.round(Math.random() * 25);
+  const targetRoll = target.defense + target.luck + Math.round(Math.random() * 20);
+  const success = myRoll > targetRoll;
+
+  if (success) {
+    state.hitsCompleted += 1;
+    state.money += target.money;
+    state.respect += target.respect;
+    state.heat = Math.min(100, state.heat + applyHeatGain(30));
+    toast(`☠️ Contract complete. ${target.name} is gone. +$${target.money}  +${target.respect} Respect`, 'reward');
+  } else {
+    state.hitsFailed += 1;
+    const lost = Math.min(state.money, Math.round(state.money * 0.2) + 80);
+    state.money -= lost;
+    state.heat = Math.min(100, state.heat + applyHeatGain(15));
+    toast(`The job fell apart. -$${lost}`, 'warn');
+  }
+  blackMarketTarget = null;
+  updateHUD();
+  renderCrimeBody();
+}
+
+function renderSecretDeals(inner) {
+  if (state.secretDealsPool.length === 0) {
+    const shuffled = [...SECRET_DEAL_TEMPLATES].sort(() => Math.random() - 0.5);
+    state.secretDealsPool = shuffled.slice(0, 3).map(d => d.id);
+  }
+  const deals = state.secretDealsPool.map(id => SECRET_DEAL_TEMPLATES.find(t => t.id === id)).filter(Boolean);
+  inner.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Off-book deals. Permanent upgrades, no questions asked, prices aren't negotiable.</p>` +
+    deals.map(d => `
+      <button class="action-btn" ${state.money < d.cost ? 'disabled' : ''} onclick="buyDeal('${d.id}')">
+        <div class="abtitle">${esc(d.label)} — $${d.cost}</div>
+        <div class="absub">${esc(d.desc)}</div>
+      </button>
+    `).join('') +
+    `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshDeals()">🔄 New deals</button>`;
+}
+function refreshDeals() {
+  const shuffled = [...SECRET_DEAL_TEMPLATES].sort(() => Math.random() - 0.5);
+  state.secretDealsPool = shuffled.slice(0, 3).map(d => d.id);
+  renderCrimeBody();
+}
+function buyDeal(id) {
+  const d = SECRET_DEAL_TEMPLATES.find(x => x.id === id);
+  if (!d || !state.secretDealsPool.includes(id) || state.money < d.cost) { toast("Can't cover that.", 'warn'); return; }
+  state.money -= d.cost;
+  d.apply(state);
+  state.secretDealsPool = state.secretDealsPool.filter(x => x !== id);
+  toast(`${d.label} — done. ${d.desc}.`, 'reward');
+  updateHUD();
+  renderCrimeBody();
+}
+
+// -- My Crew (Gang) --
+function renderCrewBody(el) {
+  const roster = state.gang.length === 0
+    ? `<div class="empty-hint">You're running solo. Recruits add attack/defense, and every member boosts job payouts by 2% (up to +30%).</div>`
+    : state.gang.map(m => `<div class="statline"><span>${esc(m.name)}</span><b>⚔️${m.attack} 🛡${m.defense} 🤝${m.loyalty}</b></div>`).join('')
+      + `<div class="tiny" style="margin-top:6px;">Combined ⚔️${gangAttack(state.gang)} 🛡${gangDefense(state.gang)} · Payout bonus +${Math.round((gangMoneyBonus(state.gang)-1)*100)}%</div>`;
+
+  const recruits = state.recruitPool.map(m => `
+    <button class="action-btn" ${state.money < m.cost ? 'disabled' : ''} onclick="recruitMember('${m.id}')">
+      <div class="abtitle">${esc(m.name)} — $${m.cost}</div>
+      <div class="absub">⚔️${m.attack} 🛡${m.defense} 🤝${m.loyalty}</div>
+    </button>
+  `).join('');
+
+  const dismiss = state.gang.length ? state.gang.map(m => `
+    <button class="action-btn" onclick="dismissMember('${m.id}')">
+      <div class="abtitle">🗑 Dismiss ${esc(m.name)}</div>
+      <div class="absub">No refund</div>
+    </button>
+  `).join('') : '';
+
+  el.innerHTML = `<div class="card"><h3>Your Crew (${state.gang.length})</h3>${roster}</div>
+    <div class="card"><h3>Recruit</h3>${recruits}
+      <button class="btn secondary small" style="margin-top:4px;" onclick="refreshRecruits()">🔄 Find new candidates</button>
+    </div>
+    ${dismiss ? `<div class="card"><h3>Dismiss</h3>${dismiss}</div>` : ''}`;
+}
+function refreshRecruits() { state.recruitPool = [randomRecruit(), randomRecruit(), randomRecruit()]; renderCrimeBody(); }
+function recruitMember(id) {
+  const m = state.recruitPool.find(x => x.id === id);
+  if (!m || state.money < m.cost) { toast("Not enough money for that recruit.", 'warn'); return; }
+  state.money -= m.cost;
+  state.gang.push(m);
+  state.recruitPool = state.recruitPool.filter(r => r.id !== m.id);
+  if (state.recruitPool.length === 0) state.recruitPool = [randomRecruit(), randomRecruit(), randomRecruit()];
+  toast(`${m.name} joined your crew. Payout bonus +${Math.round((gangMoneyBonus(state.gang)-1)*100)}%`, 'reward');
+  updateHUD();
+  renderCrimeBody();
+}
+function dismissMember(id) {
+  const m = state.gang.find(x => x.id === id);
+  state.gang = state.gang.filter(x => x.id !== id);
+  toast(`${m ? m.name : 'Member'} is out of the crew.`);
+  renderCrimeBody();
+}
+
+// -- Heat / Law Enforcement --
+function renderHeatBody(el) {
+  const tier = heatTier(state.heat);
+  const desc = {
+    low: "Police aren't paying attention to you. You're free to operate.",
+    medium: "You're on the radar. Expect the occasional random inspection.",
+    high: "Police are actively watching your crew. Raids are a real risk now.",
+    wanted: "You're Wanted. Quests and Gang Wars are locked until you cool off.",
+    mostwanted: "MOST WANTED. The whole department is looking for you specifically."
+  }[tier];
+  const bribeCost = Math.max(20, Math.round(state.heat * 6));
+  const lawyerCost = Math.max(15, Math.round(state.heat * 4));
+  el.innerHTML = `
+    <div class="card">
+      <h3>🌡 Heat: ${state.heat}/100 — ${heatLabel(state.heat)}</h3>
+      <p>${desc}</p>
+    </div>
+    <button class="action-btn" ${state.energy < 15 ? 'disabled' : ''} onclick="reduceHeat('laylow')">
+      <div class="abtitle">🧊 Lay low</div><div class="absub">15⚡ · -12 heat</div>
+    </button>
+    <button class="action-btn" ${state.money < bribeCost ? 'disabled' : ''} onclick="reduceHeat('bribe', ${bribeCost})">
+      <div class="abtitle">💵 Bribe police</div><div class="absub">$${bribeCost} · -25 heat</div>
+    </button>
+    <button class="action-btn" ${state.money < lawyerCost ? 'disabled' : ''} onclick="reduceHeat('lawyer', ${lawyerCost})">
+      <div class="abtitle">⚖️ Hire lawyer</div><div class="absub">$${lawyerCost} · -15 heat</div>
+    </button>
+  `;
+}
+function reduceHeat(type, cost) {
+  if (type === 'laylow') {
+    if (state.energy < 15) { toast("Not enough energy.", 'warn'); return; }
+    state.energy -= 15;
+    state.heat = Math.max(0, state.heat - 12);
+    toast("You keep a low profile. Heat's dying down a little.", 'reward');
+  } else if (type === 'bribe') {
+    if (state.money < cost) { toast("Can't afford that.", 'warn'); return; }
+    state.money -= cost;
+    state.heat = Math.max(0, state.heat - 25);
+    toast(`Money changes hands quietly. -$${cost}`, 'reward');
+  } else if (type === 'lawyer') {
+    if (state.money < cost) { toast("Can't afford that.", 'warn'); return; }
+    state.money -= cost;
+    state.heat = Math.max(0, state.heat - 15);
+    toast(`Your lawyer smooths things over. -$${cost}`, 'reward');
+  }
+  updateHUD();
+  if (currentTab === 'crime') renderCrimeBody();
+}
+function openHeatModal() {
+  if (!state) return;
+  setTab('crime');
+  crimeSub('heat');
+}
+
+/* ---------------- CARDS (Card Battle + Titles) ---------------- */
+function renderCards() {
+  render(`
+    <div class="pill-row">
+      <div class="pill ${cardsSubTab==='battle'?'active':''}" onclick="cardsSub('battle')">🃏 Card Battle</div>
+      <div class="pill ${cardsSubTab==='titles'?'active':''}" onclick="cardsSub('titles')">🎴 Titles</div>
+    </div>
+    <div id="cardsBody"></div>
+  `);
+  renderCardsBody();
+}
+function cardsSub(tab) { cardsSubTab = tab; renderCards(); }
+function renderCardsBody() {
+  const el = $('cardsBody');
+  if (!el) return;
+  const labels = { battle: 'Card Battle', titles: 'Titles' };
+  el.innerHTML = notConnectedCard(labels[cardsSubTab] || 'This');
+}
+
+let cardBattleView = 'home'; // home | collection | tournament
+function renderCardBattleBody(el) {
+  if (cardBattleView === 'collection') return renderMyCards(el);
+  if (cardBattleView === 'tournament') return renderTournament(el);
+
+  el.innerHTML = `
+    <div class="card">
+      <h3>Card Battle</h3>
+      <p>A separate game entirely from the street. Collect cards, build the strongest hand, climb the tournament ranks.</p>
+      <div class="statline"><span>Deck power (top 5 cards)</span><b>${deckPower()}</b></div>
+    </div>
+    <button class="btn" ${state.money < CARD_PACK_COST ? 'disabled' : ''} onclick="buyPack()">🎴 Buy a Pack — $${CARD_PACK_COST}</button>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="cardBattleView='collection';renderCardsBody()">📇 My Cards (${state.cards.length})</button>
+      <button class="btn secondary" ${state.cards.length===0?'disabled':''} onclick="cardBattleView='tournament';renderCardsBody()">🏆 Tournament</button>
+    </div>
+  `;
+}
+function buyPack() {
+  if (state.money < CARD_PACK_COST) { toast("Can't afford a pack.", 'warn'); return; }
+  state.money -= CARD_PACK_COST;
+  const card = openPack();
+  state.cards.push(card);
+  const r = rarityInfo(card.rarityId);
+  toast(`🎴 Pulled: ${card.name} — ${r.label} (Power ${card.power})`, 'reward');
+  updateHUD();
+  renderCardsBody();
+}
+function renderMyCards(el) {
+  const back = `<button class="btn secondary small" style="margin-bottom:8px;" onclick="cardBattleView='home';renderCardsBody()">⬅ Back</button>`;
+  if (state.cards.length === 0) { el.innerHTML = back + `<div class="empty-hint">No cards yet. Buy a pack to get started.</div>`; return; }
+  const sorted = [...state.cards].sort((a,b) => b.power - a.power);
+  const top5 = new Set(sorted.slice(0,5).map(c => c.id));
+  el.innerHTML = back + sorted.map(c => {
+    const r = rarityInfo(c.rarityId);
+    return `<div class="statline"><span>${esc(c.name)} <span class="badge ${r.id}">${r.label}</span>${top5.has(c.id)?' ⭐':''}</span><b>${c.power}</b></div>`;
+  }).join('');
+}
+let tournamentMatch = null;
+function renderTournament(el) {
+  const back = `<button class="btn secondary small" style="margin-bottom:8px;" onclick="cardBattleView='home';renderCardsBody()">⬅ Back</button>`;
+  if (state.cards.length === 0) { el.innerHTML = back + `<div class="empty-hint">You need at least one card to enter.</div>`; return; }
+  if (state.energy < TOURNAMENT_ENERGY_COST) {
+    el.innerHTML = back + `<div class="empty-hint">Too worn out to play right now (need ${TOURNAMENT_ENERGY_COST}⚡).</div>`;
+    return;
+  }
+  if (!tournamentMatch) {
+    const myDeck = deckPower();
+    const oppDeck = Math.max(10, Math.round(myDeck * (0.65 + Math.random() * 0.6)));
+    tournamentMatch = { myDeck, oppDeck };
+  }
+  el.innerHTML = back + `
+    <div class="card">
+      <h3>🏆 Match Found</h3>
+      <div class="statline"><span>Your deck power</span><b>${tournamentMatch.myDeck}</b></div>
+      <div class="statline"><span>Opponent deck power</span><b>${tournamentMatch.oppDeck}</b></div>
+    </div>
+    <button class="btn" onclick="playTournamentMatch()">⚔️ Play the match — ${TOURNAMENT_ENERGY_COST}⚡</button>
+  `;
+}
+function playTournamentMatch() {
+  if (!tournamentMatch || state.energy < TOURNAMENT_ENERGY_COST) { toast("Not enough energy to play.", 'warn'); return; }
+  const { myDeck, oppDeck } = tournamentMatch;
+  state.energy -= TOURNAMENT_ENERGY_COST;
+  const myRoll = myDeck + Math.round(Math.random() * (myDeck * 0.3 + 5));
+  const oppRoll = oppDeck + Math.round(Math.random() * (oppDeck * 0.3 + 5));
+  const won = myRoll > oppRoll;
+
+  if (won) {
+    state.tournamentWins += 1;
+    state.tournamentPoints += 10;
+    const moneyGain = 40 + Math.round(myDeck * 1.5);
+    state.money += moneyGain;
+    let msg = `🏆 Won the match: +$${moneyGain}  +10 pts`;
+    if (Math.random() < 0.15) {
+      const unownedCard = NUMBER_CARDS.find(c => !state.titles.includes(c.id));
+      if (unownedCard) {
+        state.titles.push(unownedCard.id);
+        msg += `\n🎴 Tournament NFT reward! Title Card ${unownedCard.name} awarded free.`;
+      } else {
+        state.money += 100;
+        msg += `\n🎴 Reward paid in cash instead: +$100`;
+      }
+    }
+    toast(msg, 'reward');
+  } else {
+    state.tournamentLosses += 1;
+    toast(`Close match, but you lost. No penalty — just rank standing.`, 'warn');
+  }
+  tournamentMatch = null;
+  updateHUD();
+  renderCardsBody();
+}
+
+// -- Titles --
+let titlesView = 'number'; // number | premium | collection
+function renderTitlesBody(el) {
+  el.innerHTML = `
+    <p class="tiny" style="margin-bottom:8px;">No pay-to-win — these buy prestige, Underground access, and small passive perks. Skill still decides jobs, fights, and hits.</p>
+    <div class="pill-row">
+      <div class="pill ${titlesView==='number'?'active':''}" onclick="titlesSub('number')">🔢 Number Cards</div>
+      <div class="pill ${titlesView==='premium'?'active':''}" onclick="titlesSub('premium')">👑 Premium</div>
+      <div class="pill ${titlesView==='collection'?'active':''}" onclick="titlesSub('collection')">🎒 Owned</div>
+    </div>
+    <div id="titlesInner"></div>
+  `;
+  renderTitlesInner();
+}
+function titlesSub(v) { titlesView = v; renderTitlesBody($('cardsBody')); }
+function renderTitlesInner() {
+  const inner = $('titlesInner');
+  if (!inner) return;
+  if (titlesView === 'number') {
+    inner.innerHTML = NUMBER_CARDS.map(c => {
+      const owned = state.titles.includes(c.id);
+      return `<button class="action-btn" ${owned || state.money < c.cost ? 'disabled' : ''} onclick="buyTitle('${c.id}')">
+        <div class="abtitle">${owned?'✅ ':''}Card ${c.name} — $${c.cost}</div>
+        <div class="absub">Underground access. No bonuses.</div>
+      </button>`;
+    }).join('');
+  } else if (titlesView === 'premium') {
+    inner.innerHTML = Object.values(PREMIUM_TITLES).map(t => {
+      const owned = state.titles.includes(t.id);
+      return `<button class="action-btn" ${owned || state.money < t.cost ? 'disabled' : ''} onclick="buyTitle('${t.id}')">
+        <div class="abtitle">${owned?'✅ ':''}${t.icon} ${t.name} — $${t.cost}</div>
+        <div class="absub">${esc(t.desc)}</div>
+      </button>`;
+    }).join('');
+  } else {
+    if (state.titles.length === 0) { inner.innerHTML = `<div class="empty-hint">You don't own any titles yet.</div>`; return; }
+    inner.innerHTML = state.titles.map(id => {
+      const premium = PREMIUM_TITLES[id];
+      if (premium) return `<div class="statline"><span>${premium.icon} ${premium.name}</span><b>${esc(premium.desc)}</b></div>`;
+      const card = NUMBER_CARDS.find(c => c.id === id);
+      return `<div class="statline"><span>🔢 Card ${card ? card.name : id}</span><b>access only</b></div>`;
+    }).join('');
+  }
+}
+function buyTitle(id) {
+  const t = PREMIUM_TITLES[id] || NUMBER_CARDS.find(c => c.id === id);
+  if (!t || state.titles.includes(id) || state.money < t.cost) { toast("Can't complete that purchase.", 'warn'); return; }
+  state.money -= t.cost;
+  state.titles.push(id);
+  const perk = t.tier === 'premium' ? t.desc : 'Underground access unlocked.';
+  toast(`🎴 ${t.name} is yours. ${perk}`, 'reward');
+  updateHUD();
+  renderTitlesBody($('cardsBody'));
+}
+
+/* ---------------- PROFILE ---------------- */
+function renderProfile() {
+  const rank = rankFor(state.level);
+  const f = FACTIONS[state.factionKey];
+  const need = xpForLevel(state.level);
+  render(`
+    <div class="card">
+      <h3>${esc(state.name)} — ${esc(rank.name)}</h3>
+      <div class="tiny">${f.flag} ${esc(f.name)}</div>
+      <div class="barwrap"><div class="bar" style="width:${Math.min(100, Math.round((state.xp/need)*100))}%"></div></div>
+      <div class="tiny" style="margin-top:3px;">Level ${state.level} · ${state.xp}/${need} XP</div>
+    </div>
+    <div class="card">
+      <div class="statline"><span>⚔️ Attack</span><b>${state.attack}</b></div>
+      <div class="statline"><span>🛡 Defense</span><b>${state.defense}</b></div>
+      <div class="statline"><span>🍀 Luck</span><b>${state.luck}</b></div>
+      <div class="statline"><span>💰 Money</span><b>$${state.money.toLocaleString()}</b></div>
+      <div class="statline"><span>🏅 Respect</span><b>${state.respect}</b></div>
+      <div class="statline"><span>🌡 Heat</span><b>${state.heat} (${heatLabel(state.heat)})</b></div>
+      <div class="statline"><span>⚡ Energy</span><b>${state.energy}/${state.maxEnergy}</b></div>
+      <div class="statline"><span>📋 Jobs completed</span><b>${state.questsDone}</b></div>
+      <div class="tiny" style="margin-top:6px;">All synced live with the server — this is real, shared data.</div>
+    </div>
+    <div class="card">
+      <div class="row"><h3>🏆 Leaderboard</h3></div>
+      <div class="pill-row">
+        <div class="pill ${leaderboardSort==='respect'?'active':''}" onclick="loadLeaderboard('respect')">Respect</div>
+        <div class="pill ${leaderboardSort==='money'?'active':''}" onclick="loadLeaderboard('money')">Money</div>
+        <div class="pill ${leaderboardSort==='level'?'active':''}" onclick="loadLeaderboard('level')">Level</div>
+      </div>
+      <div id="leaderboardList"><div class="tiny">Loading…</div></div>
+    </div>
+    <div class="card">
+      <p>Quests are live and server-authoritative. Gang Wars, Hitlist, Underground, Territory, Card Battle and Titles aren't connected to the backend yet — they'll show up here as they're ported over.</p>
+    </div>
+    <div class="card">
+      <h3>Account</h3>
+      <p class="tiny">Signed in as ${esc((authSession && authSession.user && authSession.user.email) || '')}</p>
+      <button class="btn secondary small" onclick="logOut()">🚪 Log Out</button>
+    </div>
+  `);
+  loadLeaderboard(leaderboardSort);
+}
+
+let leaderboardSort = 'respect';
+async function loadLeaderboard(sortBy) {
+  leaderboardSort = sortBy;
+  const container = $('leaderboardList');
+  if (!container) return;
+  container.innerHTML = `<div class="tiny">Loading…</div>`;
+  try {
+    const data = await apiCall('GET', '/leaderboard?by=' + sortBy);
+    if (!data.leaderboard.length) {
+      container.innerHTML = `<div class="tiny">Nobody's on the board yet — be the first.</div>`;
+      return;
+    }
+    container.innerHTML = data.leaderboard.slice(0, 10).map((p, i) => {
+      const f = FACTIONS[p.faction_key];
+      const value = sortBy === 'money' ? '$' + p.money.toLocaleString() : sortBy === 'level' ? 'Lv.' + p.level : p.respect + ' resp';
+      const isMe = state && p.name === state.name;
+      return `<div class="statline" style="${isMe ? 'color:#8fe0b8;' : ''}"><span>#${i+1} ${f ? f.flag : ''} ${esc(p.name)}</span><b>${value}</b></div>`;
+    }).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="tiny" style="color:#eb5757;">Could not load leaderboard: ${esc(e.message || 'unknown error')}</div>`;
+  }
+}
+
+function logOut() {
+  energyTimer && clearInterval(energyTimer);
+  supabaseClient.auth.signOut().then(() => {
+    authSession = null;
+    state = null;
+    $('bottomnav').style.display = 'none';
+    $('hud').style.display = 'none';
+    $('xpbar').style.display = 'none';
+    $('onboarding').style.display = 'flex';
+    startGame();
+  });
+}
+
+/* ---------------- AUTH & ONBOARDING ---------------- */
+async function startGame() {
+  if (!CONFIG_IS_SET) {
+    $('onboardingInner').innerHTML = `
+      <h1>Setup needed</h1>
+      <div class="lead">This file needs your Supabase URL and anon key filled in before it'll work.
+      Open this HTML file in a text editor, find the MULTIPLAYER CONFIG block near the top of the
+      &lt;script&gt; section, and paste in the values from your Supabase project
+      (Project Settings → API). Then reload this page.</div>
+    `;
+    return;
+  }
+
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  $('onboardingInner').innerHTML = `<div class="lead">Loading…</div>`;
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session) {
+    authSession = session;
+    await tryLoadCharacter();
+  } else {
+    renderLoginScreen();
+  }
+}
+
+async function tryLoadCharacter() {
+  $('onboardingInner').innerHTML = `<div class="lead">Loading your character…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me');
+    state = serverToState(data.player, data.gang, data.cards, data.titles);
+    enterGame();
+  } catch (e) {
+    if (e.status === 404) {
+      renderCharacterCreation();
+    } else {
+      $('onboardingInner').innerHTML = `
+        <h1>Couldn't connect</h1>
+        <div class="lead" style="color:#eb5757;">${esc(e.message || 'Unknown error')}</div>
+        <button class="btn secondary" onclick="startGame()">Try again</button>
+      `;
+    }
+  }
+}
+
+/* --- Login / Sign up --- */
+function renderLoginScreen(mode) {
+  mode = mode || 'login';
+  $('onboardingInner').innerHTML = `
+    <h1>MOB 🕵️</h1>
+    <div class="lead">${mode === 'signup' ? 'Create an account to start your empire.' : 'Welcome back.'}</div>
+    <input id="authEmail" type="email" placeholder="Email" autocomplete="username" />
+    <input id="authPassword" type="password" placeholder="Password (6+ characters)" autocomplete="${mode === 'signup' ? 'new-password' : 'current-password'}" />
+    <div id="authError" class="tiny" style="color:#eb5757;margin-bottom:8px;"></div>
+    <button class="btn" onclick="${mode === 'signup' ? 'doSignUp()' : 'doLogIn()'}">${mode === 'signup' ? 'Sign Up' : 'Log In'}</button>
+    <button class="btn secondary" style="margin-top:8px;" onclick="renderLoginScreen('${mode === 'signup' ? 'login' : 'signup'}')">
+      ${mode === 'signup' ? 'Already have an account? Log in' : "New here? Create an account"}
+    </button>
+  `;
+  $('authPassword').addEventListener('keydown', e => {
+    if (e.key === 'Enter') (mode === 'signup' ? doSignUp() : doLogIn());
+  });
+}
+
+function authFields() {
+  return { email: $('authEmail').value.trim(), password: $('authPassword').value };
+}
+
+async function doSignUp() {
+  const { email, password } = authFields();
+  $('authError').textContent = '';
+  if (!email || password.length < 6) {
+    $('authError').textContent = 'Enter a valid email and a password of at least 6 characters.';
+    return;
+  }
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+  if (error) { $('authError').textContent = error.message; return; }
+  if (!data.session) {
+    $('onboardingInner').innerHTML = `
+      <h1>Check your email</h1>
+      <div class="lead">We sent a confirmation link to ${esc(email)}. Confirm it, then come back and log in.</div>
+      <button class="btn secondary" onclick="renderLoginScreen('login')">Back to log in</button>
+    `;
+    return;
+  }
+  authSession = data.session;
+  await tryLoadCharacter();
+}
+
+async function doLogIn() {
+  const { email, password } = authFields();
+  $('authError').textContent = '';
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) { $('authError').textContent = error.message; return; }
+  authSession = data.session;
+  await tryLoadCharacter();
+}
+
+/* --- Character creation (only reached once logged in with no character yet) --- */
+function renderCharacterCreation() {
+  $('onboardingInner').innerHTML = `
+    <h1>MOB 🕵️</h1>
+    <div class="lead">Nobody knows your name yet. Nobody respects you yet.<br><br>Every empire starts with one person willing to take the first risk. That's you.</div>
+    <input id="nameInput" type="text" placeholder="Your boss name" maxlength="16" />
+    <button class="btn" onclick="submitName()">Continue</button>
+  `;
+  $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitName(); });
+  $('nameInput').focus();
+}
+function submitName() {
+  const val = $('nameInput').value.trim();
+  if (!val) return;
+  window.__pendingName = val;
+  renderFactionPicker();
+}
+function renderFactionPicker() {
+  $('onboardingInner').innerHTML = `
+    <h1>Pick your family</h1>
+    <div class="lead">${esc(window.__pendingName)} — a name people will learn to fear. Your faction shapes your whole playstyle.</div>
+    ${Object.entries(FACTIONS).map(([key, f]) => `
+      <div class="faction-card" onclick="createCharacter('${key}')">
+        <div class="fname">${f.flag} ${esc(f.name)}</div>
+        <div class="fdesc">${esc(f.desc)}</div>
+      </div>
+    `).join('')}
+    <div id="createError" class="tiny" style="color:#eb5757;margin-top:8px;"></div>
+  `;
+}
+async function createCharacter(factionKey) {
+  $('onboardingInner').innerHTML = `<div class="lead">Setting up…</div>`;
+  try {
+    await apiCall('POST', '/players', { name: window.__pendingName, factionKey });
+    await tryLoadCharacter();
+  } catch (e) {
+    renderFactionPicker();
+    $('createError').textContent = e.message || 'Could not create character.';
+  }
+}
+
+/* --- Adapts the server's player row (snake_case, minimal) into the client's richer
+   local `state` shape. Systems not yet wired to the backend (gang, territory, cards
+   beyond what's returned, titles beyond ownership, pvp/hitlist history) get sensible
+   empty defaults — they're inert until those systems are ported. --- */
+function serverToState(p, gang, cards, titleIds) {
+  return {
+    name: p.name, factionKey: p.faction_key,
+    level: p.level, xp: p.xp, xpBoost: p.xp_boost || 0,
+    money: p.money, respect: p.respect,
+    energy: p.energy, maxEnergy: p.max_energy,
+    heat: p.heat, everWanted: p.ever_wanted,
+    attack: p.attack, defense: p.defense, luck: p.luck,
+    questsDone: p.quests_done, specialDone: p.special_done || [],
+    gang: (gang || []).map(g => ({ id: g.id, name: g.name, attack: g.attack, defense: g.defense, loyalty: g.loyalty })),
+    cards: (cards || []).map(c => ({ id: c.id, name: c.name, rarityId: c.rarity_id, power: c.power })),
+    titles: titleIds || [],
+    pvpWins: p.pvp_wins, pvpLosses: p.pvp_losses,
+    hitsCompleted: p.hits_completed, hitsFailed: p.hits_failed, hitsSurvived: p.hits_survived,
+    tournamentWins: p.tournament_wins, tournamentLosses: p.tournament_losses, tournamentPoints: p.tournament_points,
+    territoriesCaptured: p.territories_captured, rivalsEliminated: p.rivals_eliminated,
+    // Not backend-synced yet — these tabs are gated off in the UI (see requiresBackend()):
+    recruitPool: [], rivals: [], hitlistBoard: [], secretDealsPool: [], districts: [], rivalGrudge: {},
+    sniperLastUsedAt: 0, log: [], serverId: p.id,
+  };
+}
+
+function enterGame() {
+  $('onboarding').style.display = 'none';
+  $('bottomnav').style.display = 'grid';
+  updateHUD();
+  startEnergyRegen();
+  setTab('home');
+}
+
+function startEnergyRegen() {
+  if (energyTimer) clearInterval(energyTimer);
+  // Energy regen is computed server-side from real elapsed time (see gameLogic.js
+  // applyEnergyRegen). The client just periodically re-fetches to stay in sync —
+  // it never invents energy locally anymore.
+  energyTimer = setInterval(async () => {
+    if (!state || !authSession) return;
+    try {
+      const data = await apiCall('GET', '/players/me');
+      if (data.player.energy !== state.energy) {
+        state.energy = data.player.energy;
+        state.maxEnergy = data.player.max_energy;
+        updateHUD();
+        if (currentTab === 'jobs') renderJobsBody();
+      }
+    } catch (e) { /* transient network hiccup — try again next tick */ }
+  }, 30000);
+}
+
+function showFatalError(context, err) {
+  try {
+    const msg = (err && err.message) ? err.message : String(err);
+    const stack = (err && err.stack) ? err.stack : '';
+    document.body.innerHTML =
+      '<div style="max-width:480px;margin:0 auto;padding:24px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;' +
+      'background:#17181a;color:#e8e6e3;min-height:100vh;box-sizing:border-box;">' +
+      '<h2 style="color:#eb5757;margin-top:0;">Something broke while loading MOB</h2>' +
+      '<p style="color:#a9a9ae;font-size:13px;">Context: ' + context + '</p>' +
+      '<pre style="white-space:pre-wrap;background:#0e0e10;border:1px solid #333;border-radius:8px;' +
+      'padding:12px;font-size:12px;color:#f2c14e;overflow-x:auto;">' + msg + (stack ? '\n\n' + stack : '') + '</pre>' +
+      '<p style="color:#8a8a8f;font-size:12px;">Copy the text above and share it so this can be fixed.</p>' +
+      '</div>';
+  } catch (e2) { /* last resort: leave whatever is on screen */ }
+}
+
+window.addEventListener('error', (e) => {
+  showFatalError('runtime error', e.error || e.message || e);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  showFatalError('unhandled promise rejection', e.reason);
+});
+
+try {
+  const p = startGame();
+  if (p && typeof p.catch === 'function') p.catch(err => showFatalError('startGame() rejected', err));
+} catch (err) {
+  showFatalError('startGame() threw synchronously', err);
+}
+</script>
+</body>
+</html>
