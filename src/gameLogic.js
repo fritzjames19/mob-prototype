@@ -98,3 +98,83 @@ export function resolveQuest(player, gang, questId) {
 
   return { player, reward: { questName: q.name, money, respect, xp }, levelUps };
 }
+
+// --- Territory ---
+// Named rivals are the same 5 persistent NPC bosses from the single-player prototype.
+// The key new thing here: districts.owner_ref can ALSO be a real player's id, and when it
+// is, the "defender" in a fight is that player's actual current stats read fresh from the
+// database — not a snapshot, not client-supplied. That's what makes this real PvP instead
+// of just reskinned NPC combat.
+export const NAMED_RIVALS = {
+  nr_sal:    { name: '"Big Sal" Moretti', basePower: 30 },
+  nr_yuki:   { name: 'Yuki Tanaka',        basePower: 42 },
+  nr_dmitri: { name: 'Dmitri Volkov',      basePower: 56 },
+  nr_carlos: { name: 'Carlos Reyes',       basePower: 70 },
+  nr_broker: { name: '"The Broker"',       basePower: 88 },
+};
+
+export const NEUTRAL_CLAIM_COST = 250;
+export const TERRITORY_ATTACK_ENERGY_COST = 25;
+export const INCOME_CAP_HOURS = 8;
+export const UPGRADE_COSTS = [0, 400, 900]; // cost to reach tier 1, tier 2 (index = tier being upgraded FROM)
+export const TIER_MULT = [1, 1.5, 2.2];
+export const COMBAT_RAND_RANGE = 45;
+
+export function pendingIncome(district) {
+  const elapsedHours = Math.min(INCOME_CAP_HOURS, (Date.now() - new Date(district.last_collected).getTime()) / 3600000);
+  return Math.max(0, Math.floor(district.base_income * TIER_MULT[district.tier] * elapsedHours));
+}
+
+// heldCount = how many districts this owner (rival or player) currently holds across the whole map
+export function rivalEffectivePower(rivalId, heldCount, grudge) {
+  const rival = NAMED_RIVALS[rivalId];
+  if (!rival) throw Object.assign(new Error('Unknown rival id'), { status: 400 });
+  const grudgeMult = 1 + Math.min(0.4, (grudge || 0) * 0.08);
+  return Math.round((rival.basePower + heldCount * 10) * grudgeMult);
+}
+
+export function playerDefensePower(defenderPlayer, defenderGang) {
+  const gangAtk = (defenderGang || []).reduce((s, m) => s + m.attack, 0);
+  const gangDef = (defenderGang || []).reduce((s, m) => s + m.defense, 0);
+  return defenderPlayer.attack + gangAtk + defenderPlayer.defense + gangDef;
+}
+
+export function attackerPower(attackerPlayer, attackerGang) {
+  const gangAtk = (attackerGang || []).reduce((s, m) => s + m.attack, 0);
+  const gangDef = (attackerGang || []).reduce((s, m) => s + m.defense, 0);
+  return attackerPlayer.attack + gangAtk + attackerPlayer.defense + gangDef;
+}
+
+// Pure combat roll — given both sides' base power, returns whether the attacker wins.
+// Exposed separately from the route so it's directly unit-testable without any DB mocking.
+export function resolveCombatRoll(myBasePower, theirBasePower, rand = Math.random) {
+  const myRoll = myBasePower + Math.round(rand() * COMBAT_RAND_RANGE);
+  const theirRoll = theirBasePower + Math.round(rand() * COMBAT_RAND_RANGE);
+  return { won: myRoll > theirRoll, myRoll, theirRoll };
+}
+
+export function canClaimNeutral(player, district) {
+  if (district.owner_type !== 'neutral') throw Object.assign(new Error('That district is not unclaimed'), { status: 409 });
+  if (player.money < NEUTRAL_CLAIM_COST) throw Object.assign(new Error('Not enough money'), { status: 400 });
+}
+
+export function canAttack(player, district) {
+  if (district.owner_type === 'neutral') throw Object.assign(new Error('That district is unclaimed — move in instead of attacking'), { status: 409 });
+  if (district.owner_type === 'player' && district.owner_ref === player.id) {
+    throw Object.assign(new Error("You already own that district"), { status: 409 });
+  }
+  if (heatTier(player.heat) === 'wanted' || heatTier(player.heat) === 'mostwanted') {
+    throw Object.assign(new Error('Too hot to make a move right now'), { status: 403 });
+  }
+  if (player.energy < TERRITORY_ATTACK_ENERGY_COST) {
+    throw Object.assign(new Error('Not enough energy'), { status: 400 });
+  }
+}
+
+export function canUpgrade(player, district) {
+  if (district.owner_type !== 'player') throw Object.assign(new Error('You do not own that district'), { status: 403 });
+  if (district.tier >= 2) throw Object.assign(new Error('Already at max tier'), { status: 409 });
+  const cost = UPGRADE_COSTS[district.tier + 1];
+  if (player.money < cost) throw Object.assign(new Error('Not enough money'), { status: 400 });
+  return cost;
+}
