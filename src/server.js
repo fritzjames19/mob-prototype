@@ -5,6 +5,8 @@ import 'dotenv/config';
 import playerRoutes from './routes/players.js';
 import questRoutes from './routes/quests.js';
 import districtRoutes from './routes/districts.js';
+import heatRoutes from './routes/heat.js';
+import gangRoutes from './routes/gang.js';
 import publicRoutes from './routes/public.js';
 
 const app = express();
@@ -20,6 +22,8 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use(playerRoutes);
 app.use(questRoutes);
 app.use(districtRoutes);
+app.use(heatRoutes);
+app.use(gangRoutes);
 app.use(publicRoutes);
 
 // Generic error handler as a last resort — anything that throws unexpectedly returns

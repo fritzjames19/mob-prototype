@@ -178,3 +178,62 @@ export function canUpgrade(player, district) {
   if (player.money < cost) throw Object.assign(new Error('Not enough money'), { status: 400 });
   return cost;
 }
+
+// --- Heat management ---
+// Matches the single-player prototype's values exactly. This closes the "heat only ever
+// goes up" gap — Quests and Territory raise it, this is the only way to bring it back down.
+export const HEAT_METHODS = {
+  laylow: { label: 'Lay low', energyCost: 15, heatReduction: 12 },
+  bribe:  { label: 'Bribe police', heatReduction: 25, cost: (heat) => Math.max(20, Math.round(heat * 6)) },
+  lawyer: { label: 'Hire lawyer', heatReduction: 15, cost: (heat) => Math.max(15, Math.round(heat * 4)) },
+};
+
+// Returns the money cost for bribe/lawyer at the player's CURRENT heat — computed server-side
+// so a client can never lowball what it's willing to pay.
+export function heatMethodCost(methodKey, player) {
+  const m = HEAT_METHODS[methodKey];
+  if (!m) throw Object.assign(new Error('Unknown heat management method'), { status: 400 });
+  return m.cost ? m.cost(player.heat) : null; // laylow has no money cost
+}
+
+export function resolveHeatReduction(player, methodKey) {
+  const m = HEAT_METHODS[methodKey];
+  if (!m) throw Object.assign(new Error('Unknown heat management method'), { status: 400 });
+
+  if (methodKey === 'laylow') {
+    if (player.energy < m.energyCost) throw Object.assign(new Error('Not enough energy'), { status: 400 });
+    player.energy -= m.energyCost;
+  } else {
+    const cost = heatMethodCost(methodKey, player);
+    if (player.money < cost) throw Object.assign(new Error('Not enough money'), { status: 400 });
+    player.money -= cost;
+  }
+  player.heat = Math.max(0, player.heat - m.heatReduction);
+  return player;
+}
+
+// --- Gang recruitment ---
+const RECRUIT_FIRST = ["Vinny","Sal","Tommy","Nicky","Frankie","Rocco","Enzo","Marco","Dmitri","Yuri","Kenji","Hiro","Carlos","Miguel","Chen","Wei","Bruno","Leo"];
+const RECRUIT_NICK = ["The Blade","Two Fingers","The Ghost","Iron Fist","The Snake","Lucky","The Wolf","Razor","The Shadow","Bones","The Fox","Hammer"];
+const RECRUIT_LAST = ["Rossi","Marchetti","Volkov","Petrov","Tanaka","Sato","Reyes","Cruz","Wong","Li","Moretti","DeLuca"];
+
+export function randomRecruit() {
+  const attack = 5 + Math.floor(Math.random() * 20);
+  const defense = 5 + Math.floor(Math.random() * 20);
+  const loyalty = 40 + Math.floor(Math.random() * 50);
+  const cost = Math.round((attack + defense) * 3 + loyalty * 1.2);
+  const useNick = Math.random() < 0.4;
+  const name = useNick
+    ? RECRUIT_FIRST[Math.floor(Math.random() * RECRUIT_FIRST.length)] + " '" + RECRUIT_NICK[Math.floor(Math.random() * RECRUIT_NICK.length)] + "'"
+    : RECRUIT_FIRST[Math.floor(Math.random() * RECRUIT_FIRST.length)] + " " + RECRUIT_LAST[Math.floor(Math.random() * RECRUIT_LAST.length)];
+  return { id: 'r' + Math.random().toString(36).slice(2, 10), name, attack, defense, loyalty, cost };
+}
+
+export function freshRecruitPool() {
+  return [randomRecruit(), randomRecruit(), randomRecruit()];
+}
+
+export function canRecruit(player, candidate) {
+  if (!candidate) throw Object.assign(new Error('That recruit is no longer available'), { status: 404 });
+  if (player.money < candidate.cost) throw Object.assign(new Error('Not enough money'), { status: 400 });
+}
