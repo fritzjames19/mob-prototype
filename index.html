@@ -223,7 +223,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // (e.g. to Railway/Render) to that service's public URL.
 const API_BASE_URL = 'https://mob-prototype.onrender.com';
 
-const CONFIG_IS_SET = SUPABASE_URL !== 'https://sazyxwarghffdxpmcecx.supabase.co' && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhenl4d2FyZ2hmZmR4cG1jZWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NTM2NDYsImV4cCI6MjEwMDUyOTY0Nn0.zbrZIHcPaxtIhApVvzMHnTiuxwpVpW-LmjerRWKJ6RM';
+const CONFIG_IS_SET = SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY_HERE';
 
 let supabaseClient = null;
 let authSession = null; // { access_token, user: {...} } once logged in
