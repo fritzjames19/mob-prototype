@@ -7,6 +7,11 @@ import questRoutes from './routes/quests.js';
 import districtRoutes from './routes/districts.js';
 import heatRoutes from './routes/heat.js';
 import gangRoutes from './routes/gang.js';
+import titleRoutes from './routes/titles.js';
+import undergroundRoutes from './routes/underground.js';
+import pvpRoutes from './routes/pvp.js';
+import hitlistRoutes from './routes/hitlist.js';
+import cardRoutes from './routes/cards.js';
 import publicRoutes from './routes/public.js';
 
 const app = express();
@@ -24,6 +29,11 @@ app.use(questRoutes);
 app.use(districtRoutes);
 app.use(heatRoutes);
 app.use(gangRoutes);
+app.use(titleRoutes);
+app.use(undergroundRoutes);
+app.use(pvpRoutes);
+app.use(hitlistRoutes);
+app.use(cardRoutes);
 app.use(publicRoutes);
 
 // Generic error handler as a last resort — anything that throws unexpectedly returns

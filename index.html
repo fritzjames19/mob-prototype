@@ -216,12 +216,12 @@
 // The anon key is meant to be public/client-side — Supabase's real security is
 // Row Level Security on the database, not hiding this key. NEVER put the
 // service_role key here; that one stays in the backend's .env only.
-const SUPABASE_URL = 'https://sazyxwarghffdxpmcecx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhenl4d2FyZ2hmZmR4cG1jZWN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NTM2NDYsImV4cCI6MjEwMDUyOTY0Nn0.zbrZIHcPaxtIhApVvzMHnTiuxwpVpW-LmjerRWKJ6RM';
+const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
 
 // Your backend's URL. While testing locally this is localhost; update it once deployed
 // (e.g. to Railway/Render) to that service's public URL.
-const API_BASE_URL = 'https://mob-prototype.onrender.com';
+const API_BASE_URL = 'http://localhost:3000';
 
 const CONFIG_IS_SET = SUPABASE_URL !== 'YOUR_SUPABASE_URL_HERE' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY_HERE';
 
@@ -861,8 +861,9 @@ function renderCrimeBody() {
   if (crimeSubTab === 'territory') { renderTerritoryBody(el); return; }
   if (crimeSubTab === 'heat') { renderHeatBody(el); return; }
   if (crimeSubTab === 'crew') { renderCrewBody(el); return; }
-  const labels = { pvp: 'Gang Wars', hitlist: 'Hitlist', underground: 'Underground' };
-  el.innerHTML = notConnectedCard(labels[crimeSubTab] || 'This');
+  if (crimeSubTab === 'pvp') { renderPvPBody(el); return; }
+  if (crimeSubTab === 'hitlist') { renderHitlistBody(el); return; }
+  if (crimeSubTab === 'underground') { renderUndergroundBody(el); return; }
 }
 
 // -- Territory (real backend, real players) --
@@ -980,11 +981,19 @@ async function upgradeBusiness(id) {
 
 // -- Gang Wars --
 const PVP_ENERGY_COST = 20;
-function renderPvPBody(el) {
+let rivalsCache = [];
+async function renderPvPBody(el) {
   if (heatBlocked()) { el.innerHTML = heatBlockedCard(); return; }
-  if (state.rivals.length === 0) state.rivals = [randomRival(playerPower()), randomRival(playerPower()), randomRival(playerPower())];
+  el.innerHTML = `<div class="tiny">Scouting the streets…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me/gangwars/rivals');
+    rivalsCache = data.rivals;
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not load rivals')}</p></div>`;
+    return;
+  }
   el.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Winning takes their cash and respect — and sometimes their people. Losing costs you.</p>` +
-    state.rivals.map(r => `
+    rivalsCache.map(r => `
       <button class="action-btn" ${state.energy < PVP_ENERGY_COST ? 'disabled' : ''} onclick="attackRival('${r.id}')">
         <div class="abtitle">${esc(r.name)}</div>
         <div class="absub">⚔️${r.attack} 🛡${r.defense} 👥${r.crewSize} · ${PVP_ENERGY_COST}⚡</div>
@@ -992,58 +1001,54 @@ function renderPvPBody(el) {
     `).join('') +
     `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshRivals()">🔄 Scout new rivals</button>`;
 }
-function refreshRivals() {
-  const p = playerPower();
-  state.rivals = [randomRival(p), randomRival(p), randomRival(p)];
+async function refreshRivals() {
+  try {
+    const data = await apiCall('POST', '/players/me/gangwars/rivals/refresh');
+    rivalsCache = data.rivals;
+  } catch (e) { toast(e.message || "Couldn't scout right now.", 'warn'); }
   renderCrimeBody();
 }
-function attackRival(id) {
-  const r = state.rivals.find(x => x.id === id);
-  if (!r || state.energy < PVP_ENERGY_COST) { toast("Not enough energy to move on them.", 'warn'); return; }
-  state.energy -= PVP_ENERGY_COST;
-
-  const myPower = state.attack + gangAttack(state.gang) + Math.round(Math.random() * 15);
-  const theirPower = r.attack + Math.round(Math.random() * 15);
-  const myDefRoll = state.defense + gangDefense(state.gang) + Math.round(Math.random() * 10);
-  const theirDefRoll = r.defense + Math.round(Math.random() * 10);
-  const won = myPower + myDefRoll > theirPower + theirDefRoll;
-
-  state.heat = Math.min(100, state.heat + applyHeatGain(won ? 8 : 5));
-  state.rivals = state.rivals.filter(x => x.id !== r.id);
-  if (state.rivals.length === 0) state.rivals = [randomRival(playerPower()), randomRival(playerPower()), randomRival(playerPower())];
-
-  if (won) {
-    state.pvpWins += 1;
-    state.money += r.moneyStake;
-    state.respect += r.respectStake;
-    let msg = `🏆 Beat ${r.name}: +$${r.moneyStake}  +${r.respectStake} Respect`;
-    if (r.crewSize > 0 && Math.random() < 0.35) {
-      const joined = randomRecruit();
-      state.gang.push(joined);
-      msg += `\n🤝 ${joined.name} switched sides and joined you!`;
+async function attackRival(id) {
+  if (state.energy < PVP_ENERGY_COST) { toast("Not enough energy to move on them.", 'warn'); return; }
+  try {
+    const data = await apiCall('POST', '/players/me/gangwars/attack/' + id);
+    state.energy = data.player.energy; state.money = data.player.money;
+    state.respect = data.player.respect; state.heat = data.player.heat;
+    rivalsCache = data.rivals;
+    if (data.won) {
+      let msg = `🏆 Beat ${data.rival.name}: +$${data.rival.moneyStake}  +${data.rival.respectStake} Respect`;
+      if (data.joinedRecruit) msg += `\n🤝 ${data.joinedRecruit.name} switched sides and joined you!`;
+      toast(msg, 'reward');
+    } else {
+      toast(`💥 Lost to ${data.rival.name}.`, 'warn');
     }
-    toast(msg, 'reward');
-  } else {
-    state.pvpLosses += 1;
-    const lost = Math.min(state.money, Math.round(r.moneyStake * 0.5));
-    state.money -= lost;
-    toast(`💥 Lost to ${r.name}: -$${lost}`, 'warn');
+  } catch (e) {
+    toast(e.message || 'Could not make that move.', 'warn');
   }
   updateHUD();
-  const event = rollHeatEvent();
-  if (event) setTimeout(() => toast(event.text, event.cls), 500);
   renderCrimeBody();
 }
 
 // -- Hitlist --
 const HIT_ENERGY_COST = 22;
-function renderHitlistBody(el) {
-  if (heatBlocked()) { el.innerHTML = heatBlockedCard(); return; }
-  const incomingChance = Math.min(0.35, state.respect / 500);
-  if (Math.random() < incomingChance) { resolveIncomingHit(); }
-  if (state.hitlistBoard.length === 0) state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
+let hitlistCache = [];
+async function renderHitlistBody(el) {
+  el.innerHTML = `<div class="tiny">Checking the board…</div>`;
+  try {
+    const incoming = await apiCall('POST', '/players/me/hitlist/check-incoming');
+    if (incoming.triggered) {
+      state.money = incoming.player.money; state.respect = incoming.player.respect;
+      toast(incoming.survived ? "🎯 Someone put a hit on you — your people shut it down. +3 Respect." : `🎯 Someone put a hit on you and got close. -$${incoming.lost}`, incoming.survived ? 'reward' : 'warn');
+      updateHUD();
+    }
+    const data = await apiCall('GET', '/players/me/hitlist/contracts');
+    hitlistCache = data.contracts;
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not load contracts')}</p></div>`;
+    return;
+  }
   el.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Contracts on real names, posted by people who want a problem to disappear.</p>` +
-    state.hitlistBoard.map(c => {
+    hitlistCache.map(c => {
       const type = HIT_TYPES[c.typeKey];
       return `<button class="action-btn" ${state.energy < HIT_ENERGY_COST ? 'disabled' : ''} onclick="attemptHit('${c.id}')">
         <div class="abtitle">${esc(type.label)}: ${esc(c.name)}</div>
@@ -1052,60 +1057,41 @@ function renderHitlistBody(el) {
     }).join('') +
     `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshContracts()">🔄 Check new contracts</button>`;
 }
-function refreshContracts() {
-  state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
+async function refreshContracts() {
+  try {
+    const data = await apiCall('POST', '/players/me/hitlist/contracts/refresh');
+    hitlistCache = data.contracts;
+  } catch (e) { toast(e.message || "Couldn't refresh contracts.", 'warn'); }
   renderCrimeBody();
 }
-function attemptHit(id) {
-  const c = state.hitlistBoard.find(x => x.id === id);
-  if (!c || state.energy < HIT_ENERGY_COST) { toast("Not enough energy for that contract.", 'warn'); return; }
-  const type = HIT_TYPES[c.typeKey];
-  state.energy -= HIT_ENERGY_COST;
-
-  const myRoll = state.attack + gangAttack(state.gang) + state.luck + Math.round(Math.random() * 20);
-  const targetRoll = c.targetDefense + c.targetLuck + Math.round(Math.random() * 20);
-  const success = myRoll > targetRoll;
-
-  state.hitlistBoard = state.hitlistBoard.filter(x => x.id !== c.id);
-  if (state.hitlistBoard.length === 0) state.hitlistBoard = [randomContract(), randomContract(), randomContract()];
-
-  if (success) {
-    state.hitsCompleted += 1;
-    state.money += c.money;
-    state.respect += c.respect;
-    state.heat = Math.min(100, state.heat + applyHeatGain(type.heat));
-    toast(`☠️ Contract complete: ${c.name}. +$${c.money}  +${c.respect} Respect`, 'reward');
-  } else {
-    state.hitsFailed += 1;
-    const lost = Math.min(state.money, 25 + Math.floor(Math.random() * 35));
-    state.money -= lost;
-    state.heat = Math.min(100, state.heat + applyHeatGain(Math.round(type.heat / 2)));
-    toast(`${c.name} got away clean. -$${lost}`, 'warn');
+async function attemptHit(id) {
+  if (state.energy < HIT_ENERGY_COST) { toast("Not enough energy for that contract.", 'warn'); return; }
+  try {
+    const data = await apiCall('POST', '/players/me/hitlist/attempt/' + id);
+    state.energy = data.player.energy; state.money = data.player.money;
+    state.respect = data.player.respect; state.heat = data.player.heat;
+    hitlistCache = data.contracts;
+    if (data.success) toast(`☠️ Contract complete: ${data.contract.name}. +$${data.contract.money}  +${data.contract.respect} Respect`, 'reward');
+    else toast(`${data.contract.name} got away clean.`, 'warn');
+  } catch (e) {
+    toast(e.message || 'Could not attempt that.', 'warn');
   }
   updateHUD();
   renderCrimeBody();
-}
-function resolveIncomingHit() {
-  const attackerPower = 15 + Math.round(Math.random() * 40);
-  const myDefense = state.defense + gangDefense(state.gang) + state.luck + Math.round(Math.random() * 15);
-  const survived = myDefense >= attackerPower;
-  if (survived) {
-    state.hitsSurvived += 1;
-    state.respect += 3;
-    toast("🎯 Someone put a hit on you — your people shut it down. +3 Respect.", 'reward');
-  } else {
-    const lost = Math.min(state.money, 40 + Math.floor(Math.random() * 60));
-    state.money -= lost;
-    toast(`🎯 Someone put a hit on you and got close. -$${lost}`, 'warn');
-  }
-  updateHUD();
 }
 
 // -- Underground (Black Market + Secret Deals) --
 let undergroundSubTab = 'blackmarket';
 let blackMarketTarget = null;
-function renderUndergroundBody(el) {
-  if (!ownsAnyTitle()) {
+async function renderUndergroundBody(el) {
+  el.innerHTML = `<div class="tiny">Checking access…</div>`;
+  let titlesOwned = [];
+  try {
+    const data = await apiCall('GET', '/players/me/titles');
+    titlesOwned = data.owned;
+  } catch (e) { /* fall through, treat as no access */ }
+
+  if (titlesOwned.length === 0) {
     el.innerHTML = `<div class="card">
       <h3>The Underground isn't for just anyone</h3>
       <p>You need to hold at least one NFT Title to get in — any Number Card works, you don't need a face card.</p>
@@ -1130,17 +1116,23 @@ function renderUndergroundInner() {
   return renderSecretDeals(inner);
 }
 
-function renderBlackMarket(inner) {
-  const elapsed = Date.now() - state.sniperLastUsedAt;
-  if (state.sniperLastUsedAt && elapsed < BLACK_MARKET_COOLDOWN_MS) {
-    const remainingSec = Math.ceil((BLACK_MARKET_COOLDOWN_MS - elapsed) / 1000);
-    inner.innerHTML = `<div class="card"><h3>🔫 Gun For Hire</h3>
-      <p>Your contact's gone quiet — one job at a time. Back in ${remainingSec}s.</p>
-      <div class="tiny">Stands in for the real game's 30-day cooldown.</div></div>`;
+async function renderBlackMarket(inner) {
+  inner.innerHTML = `<div class="tiny">Reaching out to your contact…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me/underground/blackmarket');
+    blackMarketTarget = data.target;
+  } catch (e) {
+    if (e.status === 429) {
+      const remainingSec = Math.ceil((e.retryAfterMs || 0) / 1000);
+      inner.innerHTML = `<div class="card"><h3>🔫 Gun For Hire</h3>
+        <p>Your contact's gone quiet — one job at a time. Back in ${remainingSec}s.</p>
+        <div class="tiny">Stands in for the real game's 30-day cooldown.</div></div>`;
+      return;
+    }
+    if (e.status === 403 && heatBlocked()) { inner.innerHTML = heatBlockedCard(); return; }
+    inner.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not reach the Black Market')}</p></div>`;
     return;
   }
-  if (heatBlocked()) { inner.innerHTML = heatBlockedCard(); return; }
-  if (!blackMarketTarget) blackMarketTarget = randomEliteTarget();
   const t = blackMarketTarget;
   inner.innerHTML = `<div class="card">
       <h3>🔫 Gun For Hire</h3>
@@ -1150,40 +1142,32 @@ function renderBlackMarket(inner) {
     </div>
     <button class="btn" ${state.energy < BLACK_MARKET_ENERGY_COST?'disabled':''} onclick="attemptSniper()">Take the contract — ${BLACK_MARKET_ENERGY_COST}⚡</button>`;
 }
-function attemptSniper() {
-  const target = blackMarketTarget;
-  if (!target || state.energy < BLACK_MARKET_ENERGY_COST) { toast("Not enough energy for that job.", 'warn'); return; }
-  state.energy -= BLACK_MARKET_ENERGY_COST;
-  state.sniperLastUsedAt = Date.now();
-
-  const myRoll = state.attack + gangAttack(state.gang) + Math.round(state.luck * 1.5) + Math.round(Math.random() * 25);
-  const targetRoll = target.defense + target.luck + Math.round(Math.random() * 20);
-  const success = myRoll > targetRoll;
-
-  if (success) {
-    state.hitsCompleted += 1;
-    state.money += target.money;
-    state.respect += target.respect;
-    state.heat = Math.min(100, state.heat + applyHeatGain(30));
-    toast(`☠️ Contract complete. ${target.name} is gone. +$${target.money}  +${target.respect} Respect`, 'reward');
-  } else {
-    state.hitsFailed += 1;
-    const lost = Math.min(state.money, Math.round(state.money * 0.2) + 80);
-    state.money -= lost;
-    state.heat = Math.min(100, state.heat + applyHeatGain(15));
-    toast(`The job fell apart. -$${lost}`, 'warn');
+async function attemptSniper() {
+  if (state.energy < BLACK_MARKET_ENERGY_COST) { toast("Not enough energy for that job.", 'warn'); return; }
+  try {
+    const data = await apiCall('POST', '/players/me/underground/blackmarket/attempt');
+    state.energy = data.player.energy; state.money = data.player.money;
+    state.respect = data.player.respect; state.heat = data.player.heat;
+    if (data.won) toast(`☠️ Contract complete. ${data.target.name} is gone. +$${data.target.money}  +${data.target.respect} Respect`, 'reward');
+    else toast(`The job fell apart.`, 'warn');
+  } catch (e) {
+    toast(e.message || 'Could not attempt that.', 'warn');
   }
   blackMarketTarget = null;
   updateHUD();
   renderCrimeBody();
 }
 
-function renderSecretDeals(inner) {
-  if (state.secretDealsPool.length === 0) {
-    const shuffled = [...SECRET_DEAL_TEMPLATES].sort(() => Math.random() - 0.5);
-    state.secretDealsPool = shuffled.slice(0, 3).map(d => d.id);
+async function renderSecretDeals(inner) {
+  inner.innerHTML = `<div class="tiny">Checking who's offering what…</div>`;
+  let deals = [];
+  try {
+    const data = await apiCall('GET', '/players/me/underground/deals');
+    deals = data.deals;
+  } catch (e) {
+    inner.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not load deals')}</p></div>`;
+    return;
   }
-  const deals = state.secretDealsPool.map(id => SECRET_DEAL_TEMPLATES.find(t => t.id === id)).filter(Boolean);
   inner.innerHTML = `<p class="tiny" style="margin-bottom:8px;">Off-book deals. Permanent upgrades, no questions asked, prices aren't negotiable.</p>` +
     deals.map(d => `
       <button class="action-btn" ${state.money < d.cost ? 'disabled' : ''} onclick="buyDeal('${d.id}')">
@@ -1193,18 +1177,20 @@ function renderSecretDeals(inner) {
     `).join('') +
     `<button class="btn secondary small" style="margin-top:4px;" onclick="refreshDeals()">🔄 New deals</button>`;
 }
-function refreshDeals() {
-  const shuffled = [...SECRET_DEAL_TEMPLATES].sort(() => Math.random() - 0.5);
-  state.secretDealsPool = shuffled.slice(0, 3).map(d => d.id);
+async function refreshDeals() {
+  try { await apiCall('POST', '/players/me/underground/deals/refresh'); }
+  catch (e) { toast(e.message || "Couldn't refresh deals.", 'warn'); }
   renderCrimeBody();
 }
-function buyDeal(id) {
-  const d = SECRET_DEAL_TEMPLATES.find(x => x.id === id);
-  if (!d || !state.secretDealsPool.includes(id) || state.money < d.cost) { toast("Can't cover that.", 'warn'); return; }
-  state.money -= d.cost;
-  d.apply(state);
-  state.secretDealsPool = state.secretDealsPool.filter(x => x !== id);
-  toast(`${d.label} — done. ${d.desc}.`, 'reward');
+async function buyDeal(id) {
+  try {
+    const data = await apiCall('POST', '/players/me/underground/deals/' + id + '/buy');
+    state.money = data.player.money; state.attack = data.player.attack; state.defense = data.player.defense;
+    state.luck = data.player.luck; state.maxEnergy = data.player.max_energy; state.respect = data.player.respect;
+    toast(`${data.deal.label} — done. ${data.deal.desc}.`, 'reward');
+  } catch (e) {
+    toast(e.message || "Can't cover that.", 'warn');
+  }
   updateHUD();
   renderCrimeBody();
 }
@@ -1339,60 +1325,70 @@ function cardsSub(tab) { cardsSubTab = tab; renderCards(); }
 function renderCardsBody() {
   const el = $('cardsBody');
   if (!el) return;
-  const labels = { battle: 'Card Battle', titles: 'Titles' };
-  el.innerHTML = notConnectedCard(labels[cardsSubTab] || 'This');
+  if (cardsSubTab === 'battle') return renderCardBattleBody(el);
+  return renderTitlesBody(el);
 }
 
 let cardBattleView = 'home'; // home | collection | tournament
-function renderCardBattleBody(el) {
+let cardsCache = []; let deckPowerCache = 0;
+async function renderCardBattleBody(el) {
   if (cardBattleView === 'collection') return renderMyCards(el);
   if (cardBattleView === 'tournament') return renderTournament(el);
 
+  el.innerHTML = `<div class="tiny">Loading…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me/cards');
+    cardsCache = data.cards; deckPowerCache = data.deckPower;
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not load cards')}</p></div>`;
+    return;
+  }
   el.innerHTML = `
     <div class="card">
       <h3>Card Battle</h3>
       <p>A separate game entirely from the street. Collect cards, build the strongest hand, climb the tournament ranks.</p>
-      <div class="statline"><span>Deck power (top 5 cards)</span><b>${deckPower()}</b></div>
+      <div class="statline"><span>Deck power (top 5 cards)</span><b>${deckPowerCache}</b></div>
     </div>
     <button class="btn" ${state.money < CARD_PACK_COST ? 'disabled' : ''} onclick="buyPack()">🎴 Buy a Pack — $${CARD_PACK_COST}</button>
     <div class="btn-row">
-      <button class="btn secondary" onclick="cardBattleView='collection';renderCardsBody()">📇 My Cards (${state.cards.length})</button>
-      <button class="btn secondary" ${state.cards.length===0?'disabled':''} onclick="cardBattleView='tournament';renderCardsBody()">🏆 Tournament</button>
+      <button class="btn secondary" onclick="cardBattleView='collection';renderCardsBody()">📇 My Cards (${cardsCache.length})</button>
+      <button class="btn secondary" ${cardsCache.length===0?'disabled':''} onclick="cardBattleView='tournament';renderCardsBody()">🏆 Tournament</button>
     </div>
   `;
 }
-function buyPack() {
-  if (state.money < CARD_PACK_COST) { toast("Can't afford a pack.", 'warn'); return; }
-  state.money -= CARD_PACK_COST;
-  const card = openPack();
-  state.cards.push(card);
-  const r = rarityInfo(card.rarityId);
-  toast(`🎴 Pulled: ${card.name} — ${r.label} (Power ${card.power})`, 'reward');
+async function buyPack() {
+  try {
+    const data = await apiCall('POST', '/players/me/cards/buy-pack');
+    state.money = data.money;
+    const r = rarityInfo(data.card.rarityId);
+    toast(`🎴 Pulled: ${data.card.name} — ${r.label} (Power ${data.card.power})`, 'reward');
+  } catch (e) {
+    toast(e.message || "Can't afford a pack.", 'warn');
+  }
   updateHUD();
   renderCardsBody();
 }
 function renderMyCards(el) {
   const back = `<button class="btn secondary small" style="margin-bottom:8px;" onclick="cardBattleView='home';renderCardsBody()">⬅ Back</button>`;
-  if (state.cards.length === 0) { el.innerHTML = back + `<div class="empty-hint">No cards yet. Buy a pack to get started.</div>`; return; }
-  const sorted = [...state.cards].sort((a,b) => b.power - a.power);
+  if (cardsCache.length === 0) { el.innerHTML = back + `<div class="empty-hint">No cards yet. Buy a pack to get started.</div>`; return; }
+  const sorted = [...cardsCache].sort((a,b) => b.power - a.power);
   const top5 = new Set(sorted.slice(0,5).map(c => c.id));
   el.innerHTML = back + sorted.map(c => {
-    const r = rarityInfo(c.rarityId);
+    const r = rarityInfo(c.rarity_id);
     return `<div class="statline"><span>${esc(c.name)} <span class="badge ${r.id}">${r.label}</span>${top5.has(c.id)?' ⭐':''}</span><b>${c.power}</b></div>`;
   }).join('');
 }
 let tournamentMatch = null;
-function renderTournament(el) {
+async function renderTournament(el) {
   const back = `<button class="btn secondary small" style="margin-bottom:8px;" onclick="cardBattleView='home';renderCardsBody()">⬅ Back</button>`;
-  if (state.cards.length === 0) { el.innerHTML = back + `<div class="empty-hint">You need at least one card to enter.</div>`; return; }
-  if (state.energy < TOURNAMENT_ENERGY_COST) {
-    el.innerHTML = back + `<div class="empty-hint">Too worn out to play right now (need ${TOURNAMENT_ENERGY_COST}⚡).</div>`;
+  if (cardsCache.length === 0) { el.innerHTML = back + `<div class="empty-hint">You need at least one card to enter.</div>`; return; }
+  el.innerHTML = back + `<div class="tiny">Finding a match…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me/tournament/matchup');
+    tournamentMatch = data;
+  } catch (e) {
+    el.innerHTML = back + `<div class="empty-hint">${esc(e.message || 'Could not find a match')}</div>`;
     return;
-  }
-  if (!tournamentMatch) {
-    const myDeck = deckPower();
-    const oppDeck = Math.max(10, Math.round(myDeck * (0.65 + Math.random() * 0.6)));
-    tournamentMatch = { myDeck, oppDeck };
   }
   el.innerHTML = back + `
     <div class="card">
@@ -1403,34 +1399,20 @@ function renderTournament(el) {
     <button class="btn" onclick="playTournamentMatch()">⚔️ Play the match — ${TOURNAMENT_ENERGY_COST}⚡</button>
   `;
 }
-function playTournamentMatch() {
-  if (!tournamentMatch || state.energy < TOURNAMENT_ENERGY_COST) { toast("Not enough energy to play.", 'warn'); return; }
-  const { myDeck, oppDeck } = tournamentMatch;
-  state.energy -= TOURNAMENT_ENERGY_COST;
-  const myRoll = myDeck + Math.round(Math.random() * (myDeck * 0.3 + 5));
-  const oppRoll = oppDeck + Math.round(Math.random() * (oppDeck * 0.3 + 5));
-  const won = myRoll > oppRoll;
-
-  if (won) {
-    state.tournamentWins += 1;
-    state.tournamentPoints += 10;
-    const moneyGain = 40 + Math.round(myDeck * 1.5);
-    state.money += moneyGain;
-    let msg = `🏆 Won the match: +$${moneyGain}  +10 pts`;
-    if (Math.random() < 0.15) {
-      const unownedCard = NUMBER_CARDS.find(c => !state.titles.includes(c.id));
-      if (unownedCard) {
-        state.titles.push(unownedCard.id);
-        msg += `\n🎴 Tournament NFT reward! Title Card ${unownedCard.name} awarded free.`;
-      } else {
-        state.money += 100;
-        msg += `\n🎴 Reward paid in cash instead: +$100`;
-      }
+async function playTournamentMatch() {
+  try {
+    const data = await apiCall('POST', '/players/me/tournament/play');
+    state.energy = data.player.energy; state.money = data.player.money;
+    if (data.won) {
+      let msg = `🏆 Won the match: +$${data.moneyGain}  +10 pts`;
+      if (data.awardTitleId) msg += `\n🎴 Tournament NFT reward! A free Title was awarded.`;
+      else if (data.cashRewardInstead) msg += `\n🎴 Reward paid in cash instead: +$${data.cashRewardInstead}`;
+      toast(msg, 'reward');
+    } else {
+      toast(`Close match, but you lost. No penalty — just rank standing.`, 'warn');
     }
-    toast(msg, 'reward');
-  } else {
-    state.tournamentLosses += 1;
-    toast(`Close match, but you lost. No penalty — just rank standing.`, 'warn');
+  } catch (e) {
+    toast(e.message || 'Could not play that match.', 'warn');
   }
   tournamentMatch = null;
   updateHUD();
@@ -1439,7 +1421,16 @@ function playTournamentMatch() {
 
 // -- Titles --
 let titlesView = 'number'; // number | premium | collection
-function renderTitlesBody(el) {
+let titlesCatalogCache = []; let titlesOwnedCache = [];
+async function renderTitlesBody(el) {
+  el.innerHTML = `<div class="tiny">Loading…</div>`;
+  try {
+    const data = await apiCall('GET', '/players/me/titles');
+    titlesCatalogCache = data.catalog; titlesOwnedCache = data.owned;
+  } catch (e) {
+    el.innerHTML = `<div class="card"><p style="color:#eb5757;">${esc(e.message || 'Could not load titles')}</p></div>`;
+    return;
+  }
   el.innerHTML = `
     <p class="tiny" style="margin-bottom:8px;">No pay-to-win — these buy prestige, Underground access, and small passive perks. Skill still decides jobs, fights, and hits.</p>
     <div class="pill-row">
@@ -1451,46 +1442,53 @@ function renderTitlesBody(el) {
   `;
   renderTitlesInner();
 }
-function titlesSub(v) { titlesView = v; renderTitlesBody($('cardsBody')); }
+function titlesSub(v) { titlesView = v; renderTitlesInner(); }
 function renderTitlesInner() {
   const inner = $('titlesInner');
   if (!inner) return;
+  const numberCards = titlesCatalogCache.filter(t => t.tier === 'number');
+  const premiumTitles = titlesCatalogCache.filter(t => t.tier === 'premium');
   if (titlesView === 'number') {
-    inner.innerHTML = NUMBER_CARDS.map(c => {
-      const owned = state.titles.includes(c.id);
+    inner.innerHTML = numberCards.map(c => {
+      const owned = titlesOwnedCache.includes(c.id);
       return `<button class="action-btn" ${owned || state.money < c.cost ? 'disabled' : ''} onclick="buyTitle('${c.id}')">
         <div class="abtitle">${owned?'✅ ':''}Card ${c.name} — $${c.cost}</div>
         <div class="absub">Underground access. No bonuses.</div>
       </button>`;
     }).join('');
   } else if (titlesView === 'premium') {
-    inner.innerHTML = Object.values(PREMIUM_TITLES).map(t => {
-      const owned = state.titles.includes(t.id);
+    inner.innerHTML = premiumTitles.map(t => {
+      const owned = titlesOwnedCache.includes(t.id);
       return `<button class="action-btn" ${owned || state.money < t.cost ? 'disabled' : ''} onclick="buyTitle('${t.id}')">
-        <div class="abtitle">${owned?'✅ ':''}${t.icon} ${t.name} — $${t.cost}</div>
+        <div class="abtitle">${owned?'✅ ':''}${esc(t.name)} — $${t.cost}</div>
         <div class="absub">${esc(t.desc)}</div>
       </button>`;
     }).join('');
   } else {
-    if (state.titles.length === 0) { inner.innerHTML = `<div class="empty-hint">You don't own any titles yet.</div>`; return; }
-    inner.innerHTML = state.titles.map(id => {
-      const premium = PREMIUM_TITLES[id];
-      if (premium) return `<div class="statline"><span>${premium.icon} ${premium.name}</span><b>${esc(premium.desc)}</b></div>`;
-      const card = NUMBER_CARDS.find(c => c.id === id);
-      return `<div class="statline"><span>🔢 Card ${card ? card.name : id}</span><b>access only</b></div>`;
+    if (titlesOwnedCache.length === 0) { inner.innerHTML = `<div class="empty-hint">You don't own any titles yet.</div>`; return; }
+    inner.innerHTML = titlesOwnedCache.map(id => {
+      const def = titlesCatalogCache.find(t => t.id === id);
+      if (!def) return '';
+      return def.tier === 'premium'
+        ? `<div class="statline"><span>${esc(def.name)}</span><b>${esc(def.desc)}</b></div>`
+        : `<div class="statline"><span>🔢 Card ${esc(def.name)}</span><b>access only</b></div>`;
     }).join('');
   }
 }
-function buyTitle(id) {
-  const t = PREMIUM_TITLES[id] || NUMBER_CARDS.find(c => c.id === id);
-  if (!t || state.titles.includes(id) || state.money < t.cost) { toast("Can't complete that purchase.", 'warn'); return; }
-  state.money -= t.cost;
-  state.titles.push(id);
-  const perk = t.tier === 'premium' ? t.desc : 'Underground access unlocked.';
-  toast(`🎴 ${t.name} is yours. ${perk}`, 'reward');
+async function buyTitle(id) {
+  try {
+    const data = await apiCall('POST', '/players/me/titles/' + id + '/buy');
+    state.money = data.money;
+    titlesOwnedCache.push(id);
+    const perk = data.title.tier === 'premium' ? data.title.desc : 'Underground access unlocked.';
+    toast(`🎴 ${data.title.name} is yours. ${perk}`, 'reward');
+  } catch (e) {
+    toast(e.message || "Can't complete that purchase.", 'warn');
+  }
   updateHUD();
-  renderTitlesBody($('cardsBody'));
+  renderTitlesInner();
 }
+
 
 /* ---------------- PROFILE ---------------- */
 function renderProfile() {
@@ -1525,7 +1523,7 @@ function renderProfile() {
       <div id="leaderboardList"><div class="tiny">Loading…</div></div>
     </div>
     <div class="card">
-      <p>Quests, Territory, Heat management, and Gang recruitment are live and server-authoritative. Gang Wars, Hitlist, Underground, Card Battle and Titles aren't connected to the backend yet — they'll show up here as they're ported over.</p>
+      <p>Every system is now live and server-authoritative — quests, territory, heat, gang, gang wars, hitlist, the underground, card battle, and titles all run on the real backend.</p>
     </div>
     <div class="card">
       <h3>Account</h3>

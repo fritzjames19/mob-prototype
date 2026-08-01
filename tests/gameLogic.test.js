@@ -138,5 +138,22 @@ test('gangMoneyBonus caps at 30%', () => {
   assert.strictEqual(gangMoneyBonus([]), 1.0);
 });
 
+test('resolveQuest applies Jack (+6% money) title bonus, compounding with gang/faction bonuses', () => {
+  let total = 0, trials = 500;
+  for (let i = 0; i < trials; i++) {
+    const fresh = freshPlayer({ energy: 1000 });
+    total += resolveQuest(fresh, [], 'store', ['jack']).reward.money;
+  }
+  const avg = total / trials;
+  // base avg 45, no faction bonus (yakuza default), *1.06 jack = 47.7
+  assert.ok(avg > 45.5 && avg < 50, `avg was ${avg}, expected ~47.7 with Jack title`);
+});
+
+test('resolveQuest applies King (-15% heat) title bonus', () => {
+  const withoutKing = resolveQuest(freshPlayer({ energy: 1000 }), [], 'launder', []).player.heat;
+  const withKing = resolveQuest(freshPlayer({ energy: 1000 }), [], 'launder', ['king']).player.heat;
+  assert.ok(withKing < withoutKing, 'King should reduce heat gained from the same quest');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -4,7 +4,7 @@ import { requireAuth } from '../requireAuth.js';
 import {
   applyEnergyRegen, pendingIncome, rivalEffectivePower, playerDefensePower, attackerPower,
   resolveCombatRoll, canClaimNeutral, canAttack, canUpgrade, TERRITORY_ATTACK_ENERGY_COST,
-  NEUTRAL_CLAIM_COST, UPGRADE_COSTS, TIER_MULT, NAMED_RIVALS,
+  NEUTRAL_CLAIM_COST, UPGRADE_COSTS, TIER_MULT, NAMED_RIVALS, applyHeatGain,
 } from '../gameLogic.js';
 
 const router = Router();
@@ -64,6 +64,8 @@ router.post('/districts/:id/attack', requireAuth, async (req, res) => {
 
     const attackerGang = await getGang(player.id);
     const myPower = attackerPower(player, attackerGang);
+    const { data: titleRows } = await supabaseAdmin.from('titles').select('title_id').eq('player_id', player.id);
+    const titleIds = (titleRows || []).map(t => t.title_id);
 
     let theirPower, grudgeKey = null;
     if (district.owner_type === 'npc_rival') {
@@ -84,7 +86,7 @@ router.post('/districts/:id/attack', requireAuth, async (req, res) => {
 
     // Spend energy and apply heat regardless of outcome — the attempt itself is the cost.
     const newEnergy = player.energy - TERRITORY_ATTACK_ENERGY_COST;
-    const newHeat = Math.min(100, player.heat + 12);
+    const newHeat = Math.min(100, player.heat + applyHeatGain(12, titleIds));
 
     if (roll.won) {
       const { data: updated, error: updateErr } = await supabaseAdmin

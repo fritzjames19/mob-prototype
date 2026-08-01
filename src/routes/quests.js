@@ -13,12 +13,14 @@ router.post('/players/me/quests/:questId', requireAuth, async (req, res) => {
   if (playerErr || !player) return res.status(404).json({ error: 'No character found' });
 
   const { data: gang } = await supabaseAdmin.from('gang_members').select('*').eq('player_id', player.id);
+  const { data: titleRows } = await supabaseAdmin.from('titles').select('title_id').eq('player_id', player.id);
+  const titleIds = (titleRows || []).map(t => t.title_id);
 
   const regenerated = applyEnergyRegen(player);
 
   let result;
   try {
-    result = resolveQuest(regenerated, gang || [], questId);
+    result = resolveQuest(regenerated, gang || [], questId, titleIds);
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message || 'Could not resolve quest' });
   }
